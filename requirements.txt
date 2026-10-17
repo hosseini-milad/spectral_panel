@@ -1,0 +1,9 @@
+Django==6.0.7
+mongoengine
+pymongo
+numpy
+scipy
+networkx
+torch
+pyarrow>=18.0
+scikit-learn>=1.4
