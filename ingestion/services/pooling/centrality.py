@@ -25,8 +25,8 @@ def _component_eigenvector_centrality(graph):
         try:
             values = nx.eigenvector_centrality(
                 subgraph,
-                max_iter=5000,
-                tol=1e-8,
+                max_iter=500,
+                tol=1e-6,
                 weight="weight",
             )
         except nx.PowerIterationFailedConvergence:

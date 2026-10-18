@@ -18,7 +18,9 @@ def normalize_dict(d):
 def compute_score(centralities, anomaly_scores=None):
     eigen = normalize_dict(centralities["eigenvector"])
     degree = normalize_dict(centralities["degree"])
-    between = normalize_dict(centralities["betweenness"])
+    between = normalize_dict(
+        centralities.get("betweenness", {})
+    )
 
     if anomaly_scores:
         anomaly = normalize_dict(anomaly_scores)

@@ -1,68 +1,136 @@
-import networkx as nx
+
+def _normalize(values, nodes):
+    raw = {node: float(values.get(node, 0.0)) for node in nodes}
+    if not raw:
+        return {}
+
+    low = min(raw.values())
+    high = max(raw.values())
+    span = high - low
+
+    if span <= 0:
+        return {node: 0.0 for node in nodes}
+
+    return {
+        node: (value - low) / span
+        for node, value in raw.items()
+    }
 
 
-def select_representatives(score, G, k, labels=None, attack_ratio=0.0):
-    """Choose high-scoring and structurally diverse graph nodes by class."""
+def select_representatives(
+    score,
+    G,
+    k,
+    labels=None,
+    attack_ratio=0.0,
+    eigenvector_scores=None,
+):
+    """Greedy selection using combined score, eigenvector centrality,
+    and fast local structural diversity.
+    """
     nodes = list(score)
     k = min(max(0, int(k)), len(nodes))
+
     if k == 0:
         return []
 
-    if labels is None:
-        return _select_diverse(nodes, score, G, k)
+    eigenvector_scores = eigenvector_scores or {}
+    combined = _normalize(score, nodes)
+    eigen = _normalize(eigenvector_scores, nodes)
 
-    attack_nodes = [node for node in nodes if labels.get(node) == 1]
-    normal_nodes = [node for node in nodes if labels.get(node) == 0]
+    # Explicitly retain eigenvector centrality in representative ranking.
+    importance = {
+        node: 0.70 * combined[node] + 0.30 * eigen.get(node, 0.0)
+        for node in nodes
+    }
+
+    if labels is None:
+        return _select_greedy(nodes, importance, G, k)
+
+    attack_nodes = [n for n in nodes if labels.get(n) == 1]
+    normal_nodes = [n for n in nodes if labels.get(n) == 0]
+    other_nodes = [n for n in nodes if labels.get(n) not in (0, 1)]
+
     attack_count = min(
         len(attack_nodes),
         max(1 if attack_nodes else 0, int(k * attack_ratio + 0.5)),
     )
     normal_count = min(len(normal_nodes), k - attack_count)
 
-    # Reallocate unavailable slots while keeping the requested total when
-    # the graph does not contain enough nodes from one class.
+    # Reallocate unavailable class slots.
     attack_count = min(len(attack_nodes), k - normal_count)
-    selected = _select_diverse(attack_nodes, score, G, attack_count)
-    selected.extend(
-        _select_diverse(normal_nodes, score, G, normal_count)
+    selected = _select_greedy(
+        attack_nodes, importance, G, attack_count
     )
-    return selected
+    selected.extend(
+        _select_greedy(normal_nodes, importance, G, normal_count)
+    )
+
+    # Preserve the requested total if labels contain unclassified nodes.
+    remaining = k - len(selected)
+    if remaining > 0:
+        already = set(selected)
+        remaining_nodes = [
+            n for n in nodes if n not in already
+        ]
+        selected.extend(
+            _select_greedy(remaining_nodes, importance, G, remaining)
+        )
+
+    return selected[:k]
 
 
-def _select_diverse(nodes, score, G, count):
+def _select_greedy(nodes, importance, G, count):
     if not nodes or count <= 0:
         return []
 
     count = min(count, len(nodes))
-    first = max(nodes, key=lambda node: (score.get(node, 0.0), -int(node)))
+    node_set = set(nodes)
+
+    # Deterministic tie-breaking.
+    first = max(
+        nodes,
+        key=lambda n: (importance.get(n, 0.0), -int(n)),
+    )
     selected = [first]
+    selected_set = {first}
 
-    values = [float(score.get(node, 0.0)) for node in nodes]
-    min_score, max_score = min(values), max(values)
-    score_range = max_score - min_score
-    unreachable_distance = G.number_of_nodes() + 1
-    min_distances = {node: unreachable_distance for node in nodes}
-
-    def update_distances(source):
-        for node, distance in nx.single_source_shortest_path_length(G, source).items():
-            if node in min_distances:
-                min_distances[node] = min(min_distances[node], distance)
-
-    update_distances(first)
+    # Nodes adjacent to an already selected representative.
+    covered = set(G.neighbors(first)) & node_set
 
     while len(selected) < count:
-        candidates = [node for node in nodes if node not in selected]
+        best_node = None
+        best_value = float("-inf")
 
-        def combined_score(node):
-            importance = (
-                (float(score.get(node, 0.0)) - min_score) / score_range
-                if score_range > 0 else 0.0
+        for node in nodes:
+            if node in selected_set:
+                continue
+
+            # Prefer nodes not directly adjacent to existing representatives.
+            diversity = 0.0 if node in covered else 1.0
+            value = (
+                0.75 * importance.get(node, 0.0)
+                + 0.25 * diversity
             )
-            diversity = min_distances[node] / unreachable_distance
-            return 0.5 * importance + 0.5 * diversity
 
-        next_node = max(candidates, key=lambda node: (combined_score(node), -int(node)))
-        selected.append(next_node)
-        update_distances(next_node)
+            if (
+                value > best_value
+                or (
+                    value == best_value
+                    and (
+                        best_node is None
+                        or int(node) < int(best_node)
+                    )
+                )
+            ):
+                best_value = value
+                best_node = node
+
+        if best_node is None:
+            break
+
+        selected.append(best_node)
+        selected_set.add(best_node)
+        covered.update(set(G.neighbors(best_node)) & node_set)
 
     return selected
