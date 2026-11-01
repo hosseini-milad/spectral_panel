@@ -95,7 +95,22 @@ def fit_probe(arrays, level, *, epochs=30, hidden=32, layers=2, seed=17, spectra
             predicted, _ = model(fixed_args, level)
             test_mse = float((predicted[test_t] - truth[test_t]).square().mean())
             _, embedding = model(tensors(arrays, target, arrays['node_feature_mask'], spectral), level)
-        metrics = dict(validation_mse=best, test_mse=test_mse,
+        errors = (predicted.detach().numpy() - target) ** 2
+        names = arrays.get('feature_names', np.asarray([str(i) for i in range(target.shape[1])]))
+        per_feature = []
+        for column in range(target.shape[1]):
+            selected = test[:, column]
+            per_feature.append(dict(feature=str(names[column]), test_entries=int(selected.sum()),
+                                    test_mse=float(errors[selected, column].mean()) if selected.any() else None,
+                                    mean_baseline_mse=float((target[selected, column] ** 2).mean()) if selected.any() else None))
+        subgroup = []
+        for name, rows in [('encoded', arrays['node_spectral_mask']), ('unencoded', ~arrays['node_spectral_mask'])]:
+            selected = test & rows[:, None]
+            subgroup.append(dict(group=name, node_count=int(rows.sum()), test_entries=int(selected.sum()),
+                                 test_mse=float(errors[selected].mean()) if selected.any() else None))
+        metrics = dict(per_feature=per_feature, spectral_coverage_groups=subgroup,
+                       validation_best_at_final_epoch=selected_epoch == epochs,
+                       validation_mse=best, test_mse=test_mse,
                        test_mean_baseline_mse=float(np.mean(target[test] ** 2)), selected_epoch=selected_epoch,
                        train_entries=int(train.sum()), validation_entries=int(val.sum()), test_entries=int(test.sum()))
     return dict(model=model, embedding=embedding.numpy(), metrics=metrics, history=history,

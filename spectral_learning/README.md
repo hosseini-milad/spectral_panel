@@ -240,3 +240,85 @@ local, not aligned across chunks, days or levels. Do not compute direct cross-gr
 cosine distances between them. A shared encoder/alignment is a later prerequisite
 for cross-graph temporal comparisons. Pooled embeddings within the daily component
 graph do share its single encoder.
+
+## Real higher layers: L3 Meta-component graphs and above
+
+```console
+python -u manage.py analyze_upper_hierarchy --day 2026-06-21 --force
+```
+
+L2 has already been analyzed by phases 1 and 2. This command builds a **real L3
+similarity graph** whose nodes are the existing L2 connected memberships
+(Meta-components). Default source is the active full-day message-passing run;
+`--source-run-id ID` pins an explicit completed run. `--levels 2` builds and
+analyzes L3 and L4 sequentially; maximum 3 upper levels (through L5). Counts are
+observed, not the former 866/433 planning scenarios. Every source graph and learned
+node snapshot is validated before publication. No upstream graph/run is replaced.
+
+A quotient of disconnected components has **zero** cross edges. Instead we
+explicitly define NEW similarity relations over aggregated raw attribute
+**means and standard deviations**. The 21 allowlisted raw attributes are used;
+learned coordinates, labels and threat scores are not edge descriptors. Existing
+memberships can still carry upstream sampling/topology bias: the original input
+audit is retained, not cleared by this exclusion.
+
+For every descriptor column, standardize over observed upper nodes. For i,j,
+compute mean squared standardized distance over shared observed descriptor
+columns and weight `exp(-distance_squared / (2 * bandwidth**2))`. At least 6
+shared descriptor columns (3 raw fields, each represented by mean and SD) are
+required. Default bandwidth 1, RBF threshold .85, mutual 8 nearest neighbors,
+degree cap 8. Exact identical descriptors receive a deterministic ring within
+the same degree budget, avoiding arbitrary top-k tie stars. Stable index tie
+breaks; positive undirected edges, no self loops. Comparison batches are 128 x N;
+no dense global N x N adjacency/spectral operator is allocated. Scaling is
+transductive, not a model fitted for future days. This threshold is **not** the
+old .85 cosine/component similarity and must be calibrated for the new relation.
+No target number of groups is forced.
+
+Features for higher-layer MP are the raw moment descriptors plus log(1 + original
+L1 component mass). Moment counts handle missing fields; mixture means/variances
+and component mass are propagated exactly through every grouping. This represents
+equal original **L1 components**, not original network flows. Aggregation reports
+partition coverage, conserved feature counts/global means/variances, and child-mean
+reconstruction loss as a fraction of original-component attribute variance. A
+small moment-conservation error does not prove node-level information or spectrum
+preservation. No preserved quotient spectrum or temporal behavior is claimed.
+
+Original child learned embeddings and retained spectral signatures are also
+pooled/exported as **auxiliary handoff data** (equal immediate-child weights for
+embeddings; valid-only mean/SD/count for spectral signatures). They are not used
+as graph edges or held-out targets/inputs of the higher-layer attribute probe;
+this avoids feeding full-view child reconstructions back into masked targets.
+Each upper graph computes its own spectral signatures and trains its own matched
+spectral/plain probes. Cross-graph latent coordinates are still not aligned;
+this is not a jointly trained hierarchical encoder.
+
+Default upper training is 60 epochs (vs 30 in the earlier probes), hidden 32,
+2 MP layers, 3 intervention repeats, seed17, configurable with the same MP flags.
+Selection uses validation only. A graph with fewer than 5 nodes cannot provide
+this disjoint validation/test split; spectra and lineage are still published,
+but MP is explicitly `not_run_insufficient_validation_test_entries`. Higher
+layers with a single node similarly produce no invented spectral coordinates.
+Do not directly compare MSE across different layers, feature sets and scalers.
+
+Outputs:
+
+* `document/spectral/upper/<day>/runs/<id>/`: manifest, summary table, inherited
+  input audit, phase schematic PNG/SVG and text.
+* `document/spectral/layer3/<day>/whole-day/<graph>/` (then layer4/layer5):
+  `upper-graph/runs/<id>/` has the new weighted graph, original-mass moment state,
+  inherited auxiliary features, complete node/child/chunk lineage, construction
+  policy, aggregation metrics and upper graph/chunk-membership schematic;
+  `runs/<id>/` has spectral summaries, bases, numeric checks and schematics;
+  `message-passing/runs/<id>/` has the same trained-probe evaluations and schematics
+  as lower layers, when a meaningful split is possible.
+* MongoDB: `upper_spectral_runs`, `upper_spectral_active`, `upper_spectral_graphs`,
+  `upper_spectral_nodes`, `upper_spectral_edges`, `upper_spectral_components`.
+  Building/failed versions never replace the completed active pointer.
+
+New probe reports additionally include `feature_metrics.csv`,
+`coverage_group_metrics.csv`, `validation_best_at_final_epoch`, and exact
+intervention rows in JSON/phase manifests. These diagnostics are not retroactively
+available in older uploaded runs. The coverage split is **encoded vs unencoded**;
+unencoded includes isolates AND any basis-limited nodes, so it is not an exact
+isolate-vs-connected comparison.

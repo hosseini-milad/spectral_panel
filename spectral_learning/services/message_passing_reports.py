@@ -36,7 +36,7 @@ def input_audit(graphs):
     return rows
 
 
-def graph_report(graph, result, evaluated, run_id, phase1_id, parameters):
+def graph_report(graph, result, evaluated, run_id, phase1_id, parameters, *, source_spectral_collection='spectral_analysis_runs'):
     folder = document_directory('spectral', graph.key, layer=graph.layer, day=graph.day, chunk=graph.chunk) / 'message-passing' / 'runs' / run_id
     folder.mkdir(parents=True, exist_ok=True)
     spectral, plain = evaluated['spectral'], evaluated['plain']
@@ -52,10 +52,12 @@ def graph_report(graph, result, evaluated, run_id, phase1_id, parameters):
                dict(metric='temporal_change_sensitivity', value=None, assessment='not_measured', definition='Requires actual timestamp-based windows and entity correspondence.'),
                dict(metric='anomaly_accuracy', value=None, assessment='not_measured', definition='No anomaly detector or labels used as targets.')]
     summary = dict(graph_key=graph.key, phase='eigenvector_aware_message_passing_probe', run_id=run_id,
-                   phase1_run_id=phase1_id, source_fingerprint=graph.signature, parameters=parameters,
+                   phase1_run_id=phase1_id, spectral_run_id=phase1_id, source_spectral_collection=source_spectral_collection,
+                   source_fingerprint=graph.signature, parameters=parameters,
                    node_count=len(graph.node_ids), embedding_dim=spectral['embedding'].shape[1],
                    pooled_count=len(evaluated['pooled_sizes']), node_type=graph.node_type,
                    spectral_probe=first, plain_probe=second, metrics=metrics,
+                   interventions=evaluated['interventions'],
                    embedding_semantics='full_observed_attributes_transductive_embeddings_after_probe_training',
                    embedding_coordinate_scope='graph_and_checkpoint_local_not_cross_graph_aligned',
                    pooling_semantics='equal_child_mean_std_and_size_not_raw_flow_weighted_no_parent_graph',
@@ -81,6 +83,10 @@ def graph_report(graph, result, evaluated, run_id, phase1_id, parameters):
     write_csv(folder / 'interventions.csv', evaluated['interventions'])
     history = [dict(model=name, **row) for name, probe in [('spectral', spectral), ('plain', plain)] for row in probe['history']]
     write_csv(folder / 'training_history.csv', history)
+    per_feature_rows = [dict(model=name, **row) for name, probe in [('spectral', spectral), ('plain', plain)] for row in probe['metrics']['per_feature']]
+    write_csv(folder / 'feature_metrics.csv', per_feature_rows)
+    subgroup_rows = [dict(model=name, **row) for name, probe in [('spectral', spectral), ('plain', plain)] for row in probe['metrics']['spectral_coverage_groups']]
+    write_csv(folder / 'coverage_group_metrics.csv', subgroup_rows)
     (folder / 'evaluation.txt').write_text('\n'.join([graph.key, summary['evaluation_scope'], summary['embedding_coordinate_scope'], 'Metric | Value | Assessment'] +
         [f"{row['metric']} | {row['value']} | {row['assessment']}" for row in metrics]) + '\n', encoding='utf-8')
     fig, axes = plt.subplots(2, 2, figsize=(15, 10))
@@ -110,7 +116,10 @@ def graph_report(graph, result, evaluated, run_id, phase1_id, parameters):
 def lineage_figure(path, graph, result, evaluated):
     fig, ax = plt.subplots(figsize=(15, 8)); ax.axis('off')
     blocks = result.blocks[:12]; shown = set(index for block in blocks for index in block['node_indices'])
-    chunks = sorted({str((graph.lineage[index] or {}).get('chunk_index', graph.chunk)) for index in shown}) if graph.lineage else [str(graph.chunk)]
+    def node_chunks(index):
+        row = (graph.lineage[index] or {}) if graph.lineage else {}
+        return {str(value) for value in row.get('source_chunks', [])} or {str(row.get('chunk_index', graph.chunk))}
+    chunks = sorted({chunk for index in shown for chunk in node_chunks(index)})
     def box(x, y, label, color):
         ax.text(x, y, label, transform=ax.transAxes, ha='center', va='center', fontsize=9,
                 bbox=dict(boxstyle='round,pad=.4', fc=color, ec='#466477'))
@@ -121,13 +130,13 @@ def lineage_figure(path, graph, result, evaluated):
     for index, block in enumerate(blocks):
         y = .87 - index * .065
         members = block['node_indices']
-        source_chunks = {str((graph.lineage[i] or {}).get('chunk_index', graph.chunk)) for i in members} if graph.lineage else {str(graph.chunk)}
+        source_chunks = {chunk for i in members for chunk in node_chunks(i)}
         for chunk in source_chunks: arrow((.15, positions[chunk]), (.38, y))
         box(.48, y, f'Block {block["block_index"]}: {len(members)} child nodes\nSpectral-aware child embeddings', '#e8e0fa')
         arrow((.61, y), (.76, y))
         box(.86, y, f'Pooled block {block["block_index"]}\nmean + std + size', '#def1e4')
     ax.set_title(f'{graph.key}\nSource chunks -> existing component membership -> learned child embeddings -> pooled attributes', pad=20)
-    ax.text(.5, .01, f'Showing {len(blocks)}/{len(result.blocks)} largest blocks; exact ALL memberships in pool_membership.json.\nNo new clustering and no inter-Meta-component graph is created.', transform=ax.transAxes, ha='center', fontsize=10)
+    ax.text(.5, .01, f'Showing {len(blocks)}/{len(result.blocks)} largest blocks; exact ALL memberships in pool_membership.json.\nPooling retains existing memberships; no next-parent edges are inferred by this pooling step.', transform=ax.transAxes, ha='center', fontsize=10)
     save(fig, path)
 
 

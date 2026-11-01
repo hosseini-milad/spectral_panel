@@ -1,0 +1,334 @@
+{
+  "source_run_id": "8362ef83bf014e11b638c7fefc165c24",
+  "phase1_run_id": "54698635915d4ab595e39722f249ab2d",
+  "source_manifest_sha256": "c2ff45243c9592167a0cf6316c4cc44303a1b9743eaca0e3198751adb3c2ecd1",
+  "graphs": [
+    {
+      "graph_key": "clustered-day-2026-06-21-chunk-0",
+      "node_count": 2000,
+      "test_entries": 4200,
+      "spectral_mse": 0.4438764452934265,
+      "plain_mse": 0.45101526379585266,
+      "mean_mse": 0.8804213404655457,
+      "spectral_gain_percent": 1.5828330159702642,
+      "mean_baseline_gain_percent": 49.583634006563805,
+      "spectral_best_epoch": 30,
+      "plain_best_epoch": 30
+    },
+    {
+      "graph_key": "clustered-day-2026-06-21-chunk-1",
+      "node_count": 2000,
+      "test_entries": 4200,
+      "spectral_mse": 0.41288188099861145,
+      "plain_mse": 0.4182828366756439,
+      "mean_mse": 0.8625116944313049,
+      "spectral_gain_percent": 1.2912209642540584,
+      "mean_baseline_gain_percent": 52.13028603967578,
+      "spectral_best_epoch": 30,
+      "plain_best_epoch": 30
+    },
+    {
+      "graph_key": "clustered-day-2026-06-21-chunk-2",
+      "node_count": 2000,
+      "test_entries": 4200,
+      "spectral_mse": 0.3155113160610199,
+      "plain_mse": 0.320966511964798,
+      "mean_mse": 0.7356283664703369,
+      "spectral_gain_percent": 1.6996152870852654,
+      "mean_baseline_gain_percent": 57.1099579023993,
+      "spectral_best_epoch": 30,
+      "plain_best_epoch": 30
+    },
+    {
+      "graph_key": "clustered-day-2026-06-21-chunk-3",
+      "node_count": 2000,
+      "test_entries": 4200,
+      "spectral_mse": 0.34600526094436646,
+      "plain_mse": 0.3542996644973755,
+      "mean_mse": 0.7553979754447937,
+      "spectral_gain_percent": 2.3410701121537425,
+      "mean_baseline_gain_percent": 54.19563300515446,
+      "spectral_best_epoch": 30,
+      "plain_best_epoch": 30
+    },
+    {
+      "graph_key": "clustered-day-2026-06-21-chunk-4",
+      "node_count": 2000,
+      "test_entries": 4200,
+      "spectral_mse": 0.30336081981658936,
+      "plain_mse": 0.3089258372783661,
+      "mean_mse": 0.7203687429428101,
+      "spectral_gain_percent": 1.801408878844346,
+      "mean_baseline_gain_percent": 57.88812010675023,
+      "spectral_best_epoch": 30,
+      "plain_best_epoch": 30
+    },
+    {
+      "graph_key": "clustered-day-2026-06-21-chunk-5",
+      "node_count": 2000,
+      "test_entries": 4200,
+      "spectral_mse": 0.36964690685272217,
+      "plain_mse": 0.36895084381103516,
+      "mean_mse": 0.7418469190597534,
+      "spectral_gain_percent": -0.18866010292784008,
+      "mean_baseline_gain_percent": 50.17207764086592,
+      "spectral_best_epoch": 30,
+      "plain_best_epoch": 30
+    },
+    {
+      "graph_key": "clustered-day-2026-06-21-chunk-6",
+      "node_count": 2000,
+      "test_entries": 4200,
+      "spectral_mse": 0.49016037583351135,
+      "plain_mse": 0.49887731671333313,
+      "mean_mse": 0.9346115589141846,
+      "spectral_gain_percent": 1.7473115308689668,
+      "mean_baseline_gain_percent": 47.55464222987236,
+      "spectral_best_epoch": 30,
+      "plain_best_epoch": 30
+    },
+    {
+      "graph_key": "clustered-day-2026-06-21-chunk-7",
+      "node_count": 2000,
+      "test_entries": 4200,
+      "spectral_mse": 0.3231726288795471,
+      "plain_mse": 0.3270358145236969,
+      "mean_mse": 0.6963807344436646,
+      "spectral_gain_percent": 1.1812729592861948,
+      "mean_baseline_gain_percent": 53.592537401579854,
+      "spectral_best_epoch": 30,
+      "plain_best_epoch": 30
+    },
+    {
+      "graph_key": "clustered-day-2026-06-21-chunk-8",
+      "node_count": 2000,
+      "test_entries": 4200,
+      "spectral_mse": 0.277409166097641,
+      "plain_mse": 0.28186866641044617,
+      "mean_mse": 0.5585852861404419,
+      "spectral_gain_percent": 1.582119917618452,
+      "mean_baseline_gain_percent": 50.33718700068057,
+      "spectral_best_epoch": 30,
+      "plain_best_epoch": 30
+    },
+    {
+      "graph_key": "clustered-day-2026-06-21-chunk-9",
+      "node_count": 2000,
+      "test_entries": 4200,
+      "spectral_mse": 0.5168874263763428,
+      "plain_mse": 0.5238762497901917,
+      "mean_mse": 0.9163426756858826,
+      "spectral_gain_percent": 1.3340599839461786,
+      "mean_baseline_gain_percent": 43.5923437714551,
+      "spectral_best_epoch": 30,
+      "plain_best_epoch": 30
+    },
+    {
+      "graph_key": "clustered-day-2026-06-21-chunk-10",
+      "node_count": 2000,
+      "test_entries": 4200,
+      "spectral_mse": 0.5471371412277222,
+      "plain_mse": 0.5508121252059937,
+      "mean_mse": 0.9696506857872009,
+      "spectral_gain_percent": 0.6671937326900856,
+      "mean_baseline_gain_percent": 43.57378907193424,
+      "spectral_best_epoch": 30,
+      "plain_best_epoch": 30
+    },
+    {
+      "graph_key": "clustered-day-2026-06-21-chunk-11",
+      "node_count": 2000,
+      "test_entries": 4200,
+      "spectral_mse": 0.3465575575828552,
+      "plain_mse": 0.3415875732898712,
+      "mean_mse": 0.7773367166519165,
+      "spectral_gain_percent": -1.4549663634181753,
+      "mean_baseline_gain_percent": 55.41731785480034,
+      "spectral_best_epoch": 30,
+      "plain_best_epoch": 30
+    },
+    {
+      "graph_key": "clustered-day-2026-06-21-chunk-12",
+      "node_count": 2000,
+      "test_entries": 4200,
+      "spectral_mse": 0.4387977123260498,
+      "plain_mse": 0.44172197580337524,
+      "mean_mse": 0.8359824419021606,
+      "spectral_gain_percent": 0.6620144881872791,
+      "mean_baseline_gain_percent": 47.511132969775396,
+      "spectral_best_epoch": 30,
+      "plain_best_epoch": 30
+    },
+    {
+      "graph_key": "clustered-day-2026-06-21-chunk-13",
+      "node_count": 2000,
+      "test_entries": 4200,
+      "spectral_mse": 0.29069390892982483,
+      "plain_mse": 0.2990015149116516,
+      "mean_mse": 0.6745582222938538,
+      "spectral_gain_percent": 2.778449461796706,
+      "mean_baseline_gain_percent": 56.90603133687819,
+      "spectral_best_epoch": 30,
+      "plain_best_epoch": 30
+    },
+    {
+      "graph_key": "clustered-day-2026-06-21-chunk-14",
+      "node_count": 2000,
+      "test_entries": 4200,
+      "spectral_mse": 0.39737793803215027,
+      "plain_mse": 0.3988177478313446,
+      "mean_mse": 0.8157599568367004,
+      "spectral_gain_percent": 0.361019489985992,
+      "mean_baseline_gain_percent": 51.2873934664462,
+      "spectral_best_epoch": 30,
+      "plain_best_epoch": 30
+    },
+    {
+      "graph_key": "clustered-day-2026-06-21-chunk-15",
+      "node_count": 799,
+      "test_entries": 1659,
+      "spectral_mse": 0.4595928490161896,
+      "plain_mse": 0.45850875973701477,
+      "mean_mse": 0.8383453488349915,
+      "spectral_gain_percent": -0.23643807367967895,
+      "mean_baseline_gain_percent": 45.17857710371223,
+      "spectral_best_epoch": 30,
+      "plain_best_epoch": 30
+    },
+    {
+      "graph_key": "hierarchy-components-day-2026-06-21-layer-2",
+      "node_count": 6275,
+      "test_entries": 13167,
+      "spectral_mse": 0.4429767429828644,
+      "plain_mse": 0.45156094431877136,
+      "mean_mse": 0.8637976050376892,
+      "spectral_gain_percent": 1.9010061529694866,
+      "mean_baseline_gain_percent": 48.717530541944896,
+      "spectral_best_epoch": 30,
+      "plain_best_epoch": 30
+    }
+  ],
+  "chunk_test_entry_weighted_spectral_mse": 0.3898029009817327,
+  "chunk_test_entry_weighted_plain_mse": 0.3940987919843518,
+  "chunk_weighted_gain_percent": 1.0900543442390664,
+  "chunk_improvements": 13,
+  "chunk_regressions": 3,
+  "input_audit": [
+    {
+      "graph_key": "clustered-day-2026-06-21-chunk-0",
+      "check": "source_graph_feature_provenance",
+      "status": "review_required",
+      "detail": "threat_intel_score"
+    },
+    {
+      "graph_key": "clustered-day-2026-06-21-chunk-1",
+      "check": "source_graph_feature_provenance",
+      "status": "review_required",
+      "detail": "threat_intel_score"
+    },
+    {
+      "graph_key": "clustered-day-2026-06-21-chunk-2",
+      "check": "source_graph_feature_provenance",
+      "status": "review_required",
+      "detail": "threat_intel_score"
+    },
+    {
+      "graph_key": "clustered-day-2026-06-21-chunk-3",
+      "check": "source_graph_feature_provenance",
+      "status": "review_required",
+      "detail": "threat_intel_score"
+    },
+    {
+      "graph_key": "clustered-day-2026-06-21-chunk-4",
+      "check": "source_graph_feature_provenance",
+      "status": "review_required",
+      "detail": "threat_intel_score"
+    },
+    {
+      "graph_key": "clustered-day-2026-06-21-chunk-5",
+      "check": "source_graph_feature_provenance",
+      "status": "review_required",
+      "detail": "threat_intel_score"
+    },
+    {
+      "graph_key": "clustered-day-2026-06-21-chunk-6",
+      "check": "source_graph_feature_provenance",
+      "status": "review_required",
+      "detail": "threat_intel_score"
+    },
+    {
+      "graph_key": "clustered-day-2026-06-21-chunk-7",
+      "check": "source_graph_feature_provenance",
+      "status": "review_required",
+      "detail": "threat_intel_score"
+    },
+    {
+      "graph_key": "clustered-day-2026-06-21-chunk-8",
+      "check": "source_graph_feature_provenance",
+      "status": "review_required",
+      "detail": "threat_intel_score"
+    },
+    {
+      "graph_key": "clustered-day-2026-06-21-chunk-9",
+      "check": "source_graph_feature_provenance",
+      "status": "review_required",
+      "detail": "threat_intel_score"
+    },
+    {
+      "graph_key": "clustered-day-2026-06-21-chunk-10",
+      "check": "source_graph_feature_provenance",
+      "status": "review_required",
+      "detail": "threat_intel_score"
+    },
+    {
+      "graph_key": "clustered-day-2026-06-21-chunk-11",
+      "check": "source_graph_feature_provenance",
+      "status": "review_required",
+      "detail": "threat_intel_score"
+    },
+    {
+      "graph_key": "clustered-day-2026-06-21-chunk-12",
+      "check": "source_graph_feature_provenance",
+      "status": "review_required",
+      "detail": "threat_intel_score"
+    },
+    {
+      "graph_key": "clustered-day-2026-06-21-chunk-13",
+      "check": "source_graph_feature_provenance",
+      "status": "review_required",
+      "detail": "threat_intel_score"
+    },
+    {
+      "graph_key": "clustered-day-2026-06-21-chunk-14",
+      "check": "source_graph_feature_provenance",
+      "status": "review_required",
+      "detail": "threat_intel_score"
+    },
+    {
+      "graph_key": "clustered-day-2026-06-21-chunk-15",
+      "check": "source_graph_feature_provenance",
+      "status": "review_required",
+      "detail": "threat_intel_score"
+    },
+    {
+      "graph_key": "all_chunk_graphs",
+      "check": "graph_parameter_consistency",
+      "status": "mixed",
+      "detail": "3 distinct recorded configurations; inspect phase manifest for exact parameters."
+    },
+    {
+      "graph_key": "all",
+      "check": "temporal_change_detection",
+      "status": "not_measured",
+      "detail": "Processing chunks are not real time windows. No cross-time tracking or anomaly accuracy is claimed."
+    }
+  ],
+  "missing_evidence": [
+    "interventions.csv exact values not attached; image interpretation approximate",
+    "per-feature metrics not present in this older run",
+    "no training-seed repeats or temporal/inductive evaluation",
+    "no feature-only MLP baseline",
+    "no coarsened spectral-preservation measurement"
+  ],
+  "interpretation": "Promising small spectral increment in a transductive feature reconstruction probe; not evidence of attack detection accuracy."
+}
