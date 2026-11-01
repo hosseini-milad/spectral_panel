@@ -10,7 +10,7 @@ def safe_name(value):
 
 
 def document_directory(category, source_file=None, *, layer=1, day=None, chunk=None):
-    if category not in {"nominal", "component", "report", "hierarchy"}:
+    if category not in {"nominal", "component", "report", "hierarchy", "spectral"}:
         raise ValueError(f"Unknown document category: {category}")
     if int(layer) < 1:
         raise ValueError("layer must be positive")

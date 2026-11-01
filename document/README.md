@@ -129,3 +129,18 @@ defaults, missing-data rules and MongoDB collection names.
 Run integration tests using `python manage.py test ingestion.tests hierarchy.tests --verbosity 2`.
 They use a disposable MongoDB database and temporary output directory and do not
 modify `siem_db` or existing user reports.
+
+## Spectral phase 1
+
+The rewritten phase is documented in `document/spectral/README.md` and
+`spectral_learning/README.md`. Run one line:
+
+```sh
+python -u manage.py spectral_analysis --day 2026-06-21 --force
+```
+
+It analyzes version-consistent chunk and component graphs, exports eigenvectors
+and invariant message-passing inputs, and writes metrics/PNG/SVG under
+`document/spectral/layerN/...` plus a cross-level summary under
+`document/spectral/phase1/...`. Above-Meta levels remain explicitly planning-only
+until real graph operators exist. No old ordinal-hour training commands are used.
