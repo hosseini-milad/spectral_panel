@@ -1,41 +1,107 @@
-Hierarchy layer-2 graph command
+Component-based layer-2 hierarchy
+=================================
 
-Run:
-    python -u manage.py build_hierarchy_graph --day 2026-06-21
+Run one line after all layer-1 day chunks finish:
+python -u manage.py build_hierarchy_graph --day 2026-06-21 --force
 
-Algorithm:
-    Exact blockwise all-pairs cosine threshold graph. Every unordered pair is checked.
-    Default threshold=0.995. Degree cap defaults to 0 (disabled).
-    --block-size controls memory, not which pairs are compared.
+The default command now uses graph_components (layer=1), not graph_representatives.
+Every valid component participates, including isolates and components without
+representatives. It audits each chunk's actual graph partition and traces every
+candidate member to its sampled record and original ID. Missing/incomplete chunk
+graphs, stale revisions, overlapping memberships, and missing sampled records stop
+construction. When raw counts and normalization chunk size are available, the
+expected trailing chunk is checked too. Otherwise trailing completeness is marked
+unverified in the report. Input source data is read-only.
 
-Storage:
-    siem_db.hyper_graph_metadata: one metadata document per graph, including nodes,
-    labels, stats, graph parameters, edge count, edge collection and status.
-    siem_db.hyper_graph_edges: one document per edge with source_file, source, target,
-    and weight. Edges are inserted in batches of 5,000 to avoid BSON document limits.
+Descriptions and similarity
+---------------------------
+Descriptors are recomputed from ALL member candidates, never from representative
+means. Numeric features use an explicit allowlist of normalized behavioral flow
+measurements (no labels, threat scores, IPs, raw port identifiers, IDs or chunk
+indices). Seven quantiles approximate each numeric distribution. Integral
+quantile differences use shared candidate-population scales for this day;
+scales are estimated using candidate-count-weighted quantile grids. This is a
+quantile approximation, not an exact empirical Wasserstein calculation.
 
-The metadata status is "building" while edges are saved, "complete" only after all
-edges are saved, or "failed" if edge storage fails. Use --force to rebuild a graph;
-it deletes only that graph key's metadata and edge records first.
+Raw categorical distributions come from security_data via original_id. Behavior
+uses binary flag prevalence. At least 80% observation coverage is needed for a
+field and at least three numeric fields must be shared for a comparable pair.
+Missing categorical/behavior families are omitted and available family weights
+renormalized; missing data does not count as perfect categorical similarity.
+Family weights: numeric=0.60, categorical=0.25, behavior=0.15. Graph structural
+statistics and component size are descriptive, not inputs to the similarity.
+Categorical fields with more than 128 distinct values are excluded from similarity
+and explicitly reported, bounding the distribution-comparison memory footprint.
 
-This change modifies only the hierarchy app; no ingestion files are changed.
+Default graph parameters: threshold=0.85, neighbors=8, degree-cap=12.
+All unordered pairs are examined using one-to-many vectorized comparisons without
+allocating a full square similarity matrix. Edges require mutual top-k selection
+and the minimum similarity threshold. Exact metric-descriptor duplicates also
+receive a sparse ring to prevent deterministic kNN ties from isolating later
+nodes. The final degree cap applies to every edge, including ring edges.
+The edge bound is floor(component_count * degree_cap / 2).
 
+Meta-components are connected components of this sparse graph, including
+singletons. Membership preserves original layer-1 component IDs and graph
+revisions. Aggregate means/stds are weighted by observed member counts; quantiles
+are not averaged and presented as pooled quantiles. Reports explicitly measure
+minimum/mean all-pair similarity inside each meta and warn about chaining below
+the edge threshold. Uncomparable internal pairs are counted separately.
+Thresholds, weights and k are experimental defaults, not validated detection
+parameters. Chunk order is processing order, not proof of causal/time adjacency.
 
-Layer-2 representative selection
+Storage and versioning
+----------------------
+The new source key is hierarchy-components-day-YYYY-MM-DD-layer-2.
+Collections:
+  component_hierarchy_graphs: active complete run pointer per day/source key
+  component_hierarchy_runs: version metadata, parameters, source fingerprints,
+                           completion/failure, and report paths
+  component_hierarchy_nodes: immutable component descriptors and member lineage
+  component_hierarchy_edges: sparse similarities with available-family evidence
+  meta_components: immutable per-run Meta-component membership and profiles
 
-Run:
-    python -u manage.py build_hierarchy_representatives --source-file hierarchy-day-2026-06-21-layer-2 --ratio 0.10
+--force creates a NEW run and retains prior runs and reports. The active pointer
+changes only after database writes and all report generation succeed, source
+fingerprints still match, and no concurrent build changed the active pointer.
+A failed run is recorded as failed and leaves the previous active run intact.
+Layer-1 graphs/components and legacy hyper_graph_metadata/hyper_graph_edges are
+not overwritten. Compare active_run_id when querying per-run collections.
 
-This command:
-- Reads the completed graph from hyper_graph_metadata.
-- Reads edge documents from hyper_graph_edges.
-- Uses the existing ingestion centrality, scoring and representative selection
-  functions without modifying any ingestion file.
-- Saves selected representatives to siem_db.hyper_representatives.
-- Preserves parent lineage through original_id, parent_source_file,
-  parent_node_index, and parent_original_id.
-- Defaults to 10% of graph nodes. Use --force to replace only this source_file's
-  existing hyper_representatives.
-Note: anomaly scores are not computed at this hierarchy layer; the existing
-selector receives an empty anomaly score mapping, while graph centrality, degree,
-component rarity, label balance and graph-distance selection remain active.
+Outputs
+-------
+document/hierarchy/layer2/YYYY-MM-DD/whole-day/
+  hierarchy-components-day-YYYY-MM-DD-layer-2/runs/<run-id>/
+    evaluation.json / evaluation.txt
+    lineage.json                  complete IDs, descriptors and memberships
+    lineage.html                  standalone interactive chunk/component/meta explorer
+    overview.png / overview.svg
+    component_graph.png / component_graph.svg
+    lineage_page_001.png / lineage_page_001.svg (and subsequent pages)
+    component_membership.csv
+    chunk_meta_matrix.csv
+
+Open lineage.html locally in a browser. Filter by chunk, Meta-component or child
+component ID; click a component for source and neighbor details, or a Meta for
+membership/profiles. All data is embedded; no Internet or web server is needed.
+Membership lines are distinct from similarity edges. Static lineage pages retain
+every child exactly once (80 children per page); large metas may span pages and
+show both total children and children shown. The dashboard bounds the matrix to
+30 metas plus an explicitly aggregated Other column; full membership remains in
+CSV, JSON, page diagrams and the interactive explorer. Candidate-node coverage
+refers to layer-1 graph inputs, not unsampled raw flow records.
+
+Legacy comparison
+-----------------
+The previous representative-based implementation remains available as:
+python -u manage.py build_representative_hierarchy_graph --day 2026-06-21
+Its data and existing representative/hybrid visualization commands retain their
+old meaning. Do not run build_hierarchy_representatives or the legacy hierarchy
+visualization commands expecting them to consume the NEW component graph. The
+new build_hierarchy_graph already performs Meta-component evaluation and renders
+all required diagrams automatically.
+
+Validation
+----------
+python manage.py test ingestion.tests hierarchy.tests
+The suites use disposable MongoDB databases and temporary report directories.

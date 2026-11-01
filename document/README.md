@@ -83,13 +83,12 @@ python manage.py evaluate_graph_components --all
 python manage.py evaluate_graph_components --all --layer 2
 ```
 
-Layer-1 graph creation and the three hierarchy similarity graph builders persist
+Layer-1 graph creation and the legacy representative/hybrid hierarchy builders persist
 components automatically. Pooling refreshes representative links and reports,
 without deleting components or changing their identities. Legacy components
 retain their IDs when membership is unchanged. A graph with saved layer-1
-representatives cannot be rebuilt implicitly. This change does not implement
-Meta-Component merging or reinterpret temporal traffic snapshots as similarity
-graphs.
+representatives cannot be rebuilt implicitly. The component-based layer-2
+Meta-component builder is documented below.
 
 `graph_components` stores every connected component, including isolates and
 components without representatives. It records the source graph/layer, ordered
@@ -110,6 +109,21 @@ include size, density, degree statistics, bridges, cycle rank, clustering, and
 Louvain community sizes. These are structural diagnostics, not proof of anomaly
 detection accuracy. Louvain is not reported for graphs with negative weights.
 
-Run integration tests using `python manage.py test ingestion.tests --verbosity 2`.
+## Component-based layer 2
+
+```sh
+python -u manage.py build_hierarchy_graph --day 2026-06-21 --force
+```
+
+This uses all layer-1 components, including components without representatives,
+and produces Meta-components plus complete visual lineage automatically. Outputs
+are under `document/hierarchy/layer2/<day>/whole-day/hierarchy-components-day-<day>-layer-2/runs/<run-id>/`.
+Open `lineage.html` for an offline interactive view of chunks → child components →
+Meta-components. Inspect `overview.png`, all `lineage_page_*.png` pages, and
+`evaluation.json`; full memberships are in JSON and CSV. Previous runs and legacy
+representative-based graphs are retained. See `hierarchy/README.txt` for metrics,
+defaults, missing-data rules and MongoDB collection names.
+
+Run integration tests using `python manage.py test ingestion.tests hierarchy.tests --verbosity 2`.
 They use a disposable MongoDB database and temporary output directory and do not
 modify `siem_db` or existing user reports.
