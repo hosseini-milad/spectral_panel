@@ -18,7 +18,7 @@ NON_FEATURE_FIELDS = {
     "attack_category", "attack_type", "confidence", "country", "evidence_source",
     "mitre_tactic", "mitre_technique", "protocol", "src_ip", "dst_ip",
     "src_port_category", "dst_port_category", "tcp_flags", "dns_query", "zeek_available",
-    "flow_file", "behavioral_flags",
+    "flow_file", "behavioral_flags", "threat_intel_score",
 }
 
 

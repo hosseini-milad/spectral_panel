@@ -174,9 +174,18 @@ class Command(BaseCommand):
                     '--force required to rebuild this stage.'
                 )
             if stored_reps or stored_components:
-                raise CommandError(
-                    'This chunk already has representatives; refusing to rebuild its graph '
-                    'because representative mappings would become stale.'
+                if not opts['force']:
+                    raise CommandError(
+                        'This chunk already has representatives/components; refusing to '
+                        'rebuild its graph because their mappings would become stale. '
+                        'Use --force to intentionally remove and rebuild downstream artifacts.'
+                    )
+                GraphRepresentative.objects(source_file=key).delete()
+                GraphComponent.objects(source_file=key).delete()
+                self.stdout.write(
+                    self.style.WARNING(
+                        '[DAY] Removed existing representatives/components before forced graph rebuild.'
+                    )
                 )
 
             # The graph command owns its defaults (neighbors, threshold, degree cap,
@@ -229,6 +238,25 @@ class Command(BaseCommand):
                 'stopping to avoid invalid representatives.'
             )
 
+        # Raw categorical descriptors are fetched from security_data. The sampled
+        # normalized documents contain encoded categorical values, which must not
+        # be treated as original category labels in component frequency profiles.
+        raw_ids = [doc["_id"] for doc in docs]
+        raw_projection = {
+            "_id": 1,
+            "protocol": 1,
+            "src_port_category": 1,
+            "dst_port_category": 1,
+            "flow_duration_class": 1,
+        }
+        raw_docs = list(
+            db["security_data"].find(
+                {"_id": {"$in": raw_ids}},
+                raw_projection,
+            )
+        )
+        raw_docs_by_id = {str(doc["_id"]): doc for doc in raw_docs}
+
         labels = {i: int(doc.get('label', 0) or 0) for i, doc in enumerate(docs)}
         if not all(label in (0, 1) for label in labels.values()):
             raise CommandError('Non-binary label found; verify source data.')
@@ -244,6 +272,8 @@ class Command(BaseCommand):
             edges=graph.edges,
             features=graph.features,
             docs=docs,
+            feature_fields=(graph.graph_parameters or {}).get("feature_fields", []),
+            raw_docs_by_id=raw_docs_by_id,
             ratio=opts['ratio'],
             labels=labels,
             attack_ratio=attack_ratio,

@@ -28,11 +28,20 @@ class GraphComponent(Document):
     representative_node_indices = ListField(IntField())
     representative_count = IntField(default=0)
 
-    # Numeric means/stds over selected representatives only.
+    # Backward-compatible representative-only summary (legacy fields).
     mean_features = DictField()
     feature_std = DictField()
     feature_observation_counts = DictField()
     feature_fields = ListField(StringField())
+
+    # Full component profile computed from every node in the component.
+    node_feature_profile = DictField()
+    categorical_profile = DictField()
+    behavioral_profile = DictField()
+
+    # Separate profile computed only from selected representatives.
+    representative_feature_profile = DictField()
+    representative_categorical_profile = DictField()
 
     component_statistics = DictField()
     created_at = DateTimeField(default=datetime.utcnow)
