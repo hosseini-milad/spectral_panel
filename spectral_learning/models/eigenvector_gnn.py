@@ -1,4 +1,4 @@
-"""Phase-2 message-passing contract; phase-1 analysis does not train this module."""
+"""Eigenvector-aware encoder used by phase-2 masked-feature probes."""
 import torch
 from torch import nn
 

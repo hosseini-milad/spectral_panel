@@ -143,3 +143,100 @@ each valid slot to a distinct global eigenvector column, and
 `global_basis_eigenvalues` stores the corresponding values in block/rank order.
 Reconstruct a sparse global eigenbasis using those indices; concatenated local
 slots alone are NOT columns of a single global diagonal eigendecomposition.
+
+## Phase 2: executable eigenvector-aware message passing
+
+```sh
+python -u manage.py spectral_message_passing --day 2026-06-21 --force
+```
+
+Uses the active **full-day phase-1 run** including its selected hierarchy version.
+`--spectral-run-id ID` selects a complete explicit run (including a scoped run).
+Every source graph and attribute fingerprint must still match phase 1, before
+and after execution. No upstream graph or previous phase output is overwritten.
+
+`evaluate_message_passing(graph, result, ...)` runs two matched transductive
+masked-feature probes: invariant spectral inputs enabled vs disabled. Both use
+`EigenvectorAwareMessagePassing` with identical initial seeds, architecture,
+splits and training schedule. Default: 30 epochs, hidden 32, 2 layers, Adam
+lr .003, weight decay .0001, CPU, one thread. Change with `--epochs`,
+`--hidden-dim`, `--layers`, `--seed`, `--perturbation-repeats` (default 3).
+This is a preliminary representation-learning task with an auxiliary linear
+feature head, not the future multi-objective graph Autoencoder.
+
+Per attribute with >=5 observed entries, hold out 10% validation and 10% test
+entries (at least one each). Fit column mean/SD using training entries only.
+The held-out values AND their availability masks remain absent from encoder
+inputs throughout training and evaluation. Randomly hide 20% of remaining
+training entries each epoch and optimize only those entries. Select checkpoint
+using validation MSE only; evaluate held-out test entries once afterward.
+Attributes with <5 observations remain training-only; insufficient overall
+validation/test data aborts publication. Graph topology is transductive and
+may encode information about hidden feature values because graphs were built
+upstream using those attributes. This is **not** inductive generalization.
+
+The encoder consumes attribute values/masks, 3 node spectral channels and their
+mask, structural-level embedding, weighted edges, 3 invariant edge channels and
+their mask. For each layer:
+
+```
+h_i^0 = Linear([masked(x_i), mask_i, spectral_i, spectral_mask_i, level])
+m_ij = w_ij * MLP([h_j, h_i, spectral_ij, spectral_mask_ij])
+a_i = sum_j(m_ij) / max(sum_j(w_ij), epsilon)
+h_i^(l+1) = h_i^l + Update([h_i^l, a_i])
+```
+
+Isolates receive no invented neighbors or spectral coordinates; their attributes
+and level are retained. The encoder uses projector-group signatures to avoid
+raw eigenvector sign/rotation ambiguity. Runtime audits check sign/group
+rotation invariance (<=1e-9) and node permutation equivariance (<=1e-4).
+
+Evaluation exports test MSE vs a train-column-mean baseline and the matched
+spectral ablation. Positive spectral improvement means lower MSE in this probe,
+not proven anomaly-detection improvement. One training seed is used; no
+statistical significance claim. Interventions (3 repeats by default):
+
+* weight changes: random 10% of edges multiplied by exp(U(-.05,.05));
+* drop ceil(1% of edges), reporting component/encoding-count changes;
+* feature noise: Gaussian SD = 5% of each observed column's SD.
+
+Recompute eigenspaces/signatures for topology interventions; preserve weights
+and model checkpoints otherwise. Compare embeddings in the **same model's**
+coordinate system. Report relative Frobenius changes and signature changes on
+nodes valid before AND after the intervention. Zero denominator -> unavailable.
+Sensitivity has no universal pass threshold, and these are simulated changes,
+not timestamp-based temporal tracking. Weight changes are not thresholded again
+and may exceed original cosine range; they perturb the Laplacian, not rebuild
+the original neighbor-selection process.
+
+Input audit reports differing graph construction configurations (excluding chunk
+IDs) and flagged label/score fields, including indirect `threat_intel_score`
+effects through topology. These warnings permit exploratory runs but block any
+claim that the inputs are uniformly constructed or free of label leakage.
+
+Outputs:
+
+* `document/spectral/layerN/<day>/<scope>/<graph>/message-passing/runs/<id>/`:
+  evaluation JSON/TXT, metrics CSV, interventions CSV, training curves CSV,
+  overview PNG/SVG, pooling schematic PNG/SVG, embeddings NPZ, both probe
+  checkpoints, complete membership JSON.
+* `document/spectral/phase2/<day>/runs/<id>/`: phase manifest, graph summary,
+  input audit, phase summary and phase schematic PNG/SVG.
+* MongoDB `spectral_message_passing_runs`, `spectral_message_passing_active`,
+  `spectral_message_passing_graphs`, `spectral_message_passing_nodes`,
+  `spectral_pooled_features`.
+
+NPZ contains full-observed-attribute inference embeddings, disjoint entry masks,
+scaler, block mapping, pooled means/SDs/sizes. Pooling treats each child equally,
+not by original raw-flow volume. Existing connected-block membership is retained;
+no new clustering or parent edges are inferred. Every child is included once,
+including isolates. Pooled attributes are a handoff for the next phase, **not a
+coarsened graph with demonstrated spectral preservation**. Schematics show the
+largest 12 memberships; JSON/NPZ/MongoDB contain them all. Higher layers,
+temporal analysis, anomaly scores and Ridge remain unexecuted.
+
+Models are trained separately per graph. Embedding coordinates are graph/checkpoint
+local, not aligned across chunks, days or levels. Do not compute direct cross-graph
+cosine distances between them. A shared encoder/alignment is a later prerequisite
+for cross-graph temporal comparisons. Pooled embeddings within the daily component
+graph do share its single encoder.
