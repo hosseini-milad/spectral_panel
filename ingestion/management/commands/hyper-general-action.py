@@ -221,6 +221,7 @@ class Command(BaseCommand):
                         )
 
                 # Reports are reproducible outputs; rerun them even when DB stages exist.
+                call_command("evaluate_graph_components", source_file=chunk_source)
                 eval_kwargs = {
                     "source_file": f"clustered-day-{day}",
                     "chunk_index": chunk_index,

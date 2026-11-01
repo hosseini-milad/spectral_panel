@@ -1,3 +1,4 @@
+from ingestion.utils.document_paths import document_directory
 from collections import Counter
 from pathlib import Path
 
@@ -152,7 +153,7 @@ def create_ingest_report(source_file, output_path=None):
     fig.tight_layout()
 
     if output_path is None:
-        output_path = Path(settings.BASE_DIR) / "files" / "report" / "report-ingest.png"
+        output_path = document_directory("report", source_file, day=graph.source_day) / "report-ingest.png"
     else:
         output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)

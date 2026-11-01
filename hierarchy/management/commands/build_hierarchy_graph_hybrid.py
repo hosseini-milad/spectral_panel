@@ -1,3 +1,5 @@
+from ingestion.services.graph.components import persist_components
+from ingestion.utils.document_paths import document_directory
 import json
 import re
 import time
@@ -419,10 +421,7 @@ class Command(BaseCommand):
             ],
         }
 
-        out_dir = (
-            Path(settings.BASE_DIR) / "files" / "evaluation"
-            / f"hierarchy-day-{day}" / "hybrid_similarity"
-        )
+        out_dir = document_directory("hierarchy", graph_key, layer=2, day=day) / "hybrid_similarity"
         out_dir.mkdir(parents=True, exist_ok=True)
         json_path = out_dir / f"{graph_key}_diagnostic.json"
         txt_path = out_dir / f"{graph_key}_diagnostic.txt"
@@ -568,6 +567,9 @@ class Command(BaseCommand):
                 {"$set": {"status": "failed", "saved_edge_count": saved}},
             )
             raise
+
+        persist_components(graph_doc, edges=final_edges, docs=rep_docs,
+                           graph_collection="hyper_graph_metadata")
 
         self.stdout.write(self.style.SUCCESS(
             f"[HYBRID] Saved separate graph {graph_key}: "

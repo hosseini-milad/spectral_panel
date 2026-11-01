@@ -1,17 +1,16 @@
 
 import math
-import os
 import time
 
 import numpy as np
 import networkx as nx
-from django.conf import settings
 from sklearn.ensemble import IsolationForest
 
 from bson import ObjectId
 
 from ingestion.models.graph_representative import GraphRepresentative
-from ingestion.models.graph_component import GraphComponent
+from ingestion.services.graph.components import persist_components, ordered_components
+from ingestion.utils.document_paths import document_directory, safe_name
 
 from ingestion.services.pooling.centrality import (
     build_graph,
@@ -61,38 +60,6 @@ ANOMALY_FIELDS = (
     "tos",
     "threat_intel_score",
 )
-
-
-# Explicit allowlist for component summaries. These are numeric/behavioral
-# flow features only; labels, attack descriptors, IPs and threat scores are excluded.
-COMPONENT_MEAN_FIELDS = (
-    "bytes", "bytes_per_packet", "bytes_per_sec",
-    "duration_s", "packets", "packets_per_sec",
-    "flag_ack", "flag_syn", "flag_fin", "flag_psh", "flag_rst", "flag_urg",
-)
-
-
-def _finite_numeric(value):
-    try:
-        number = float(value)
-    except (TypeError, ValueError, OverflowError):
-        return None
-    return number if math.isfinite(number) else None
-
-
-def _component_feature_summary(representative_docs):
-    """Mean/std of allow-listed features across this component's reps."""
-    means, stds, counts = {}, {}, {}
-    for field in COMPONENT_MEAN_FIELDS:
-        values = [
-            number
-            for doc in representative_docs
-            if (number := _finite_numeric(doc.get(field))) is not None
-        ]
-        counts[field] = len(values)
-        means[field] = float(np.mean(values)) if values else None
-        stds[field] = float(np.std(values)) if values else None
-    return means, stds, counts
 
 
 def _percentile_rank(values):
@@ -281,11 +248,7 @@ def run_pooling(
 
     # "Component" in the layer-1 evaluation means a connected component,
     # not a Louvain community. Keep that definition consistent here.
-    connected_components = sorted(
-        (set(component) for component in nx.connected_components(G)),
-        key=len,
-        reverse=True,
-    )
+    connected_components = ordered_components(G)
     node_to_component_index = {}
     for component_index, component_nodes in enumerate(connected_components):
         for node in component_nodes:
@@ -393,9 +356,16 @@ def run_pooling(
 
     # Create one persistent entity ID per connected component. This is the
     # same component definition/order used by evaluate_layer1_component_allocation.
+    component_metadata = {
+        'source_file': source_file,
+        'source_day': docs[0].get('source_day'),
+        'node_ids': [str(doc['_id']) for doc in docs],
+        'edges': edges,
+        'graph_parameters': {'layer': 1, 'chunk_index': docs[0].get('chunk_index')},
+    }
+    component_result = persist_components(component_metadata, docs=docs, write_reports=False)
     component_object_ids = {
-        component_index: ObjectId()
-        for component_index in range(len(connected_components))
+        row['component_index']: row['_id'] for row in component_result['components']
     }
 
     # Prepare all outputs before deleting existing representatives.
@@ -449,63 +419,6 @@ def run_pooling(
     )
 
     representative_object_ids = [ObjectId() for _ in reps]
-    rep_ids_by_component = {}
-    rep_original_ids_by_component = {}
-    rep_node_indices_by_component = {}
-
-    for item, rep_id in zip(reps, representative_object_ids):
-        component_id = item["component_id"]
-        rep_ids_by_component.setdefault(component_id, []).append(str(rep_id))
-        rep_original_ids_by_component.setdefault(component_id, []).append(item["original_id"])
-        rep_node_indices_by_component.setdefault(component_id, []).append(int(item["node_index"]))
-
-    component_documents = []
-    for component_index, member_set in enumerate(connected_components):
-        member_indices = sorted(int(node) for node in member_set)
-        member_docs = [docs[index] for index in member_indices]
-        component_oid = component_object_ids[component_index]
-        component_key = str(component_oid)
-
-        selected_rep_docs = [
-            docs[index]
-            for index in rep_node_indices_by_component.get(component_key, [])
-        ]
-        mean_features, feature_std, feature_counts = _component_feature_summary(
-            selected_rep_docs
-        )
-        subgraph = G.subgraph(member_set)
-
-        component_documents.append(
-            GraphComponent(
-                id=component_oid,
-                component_id=component_key,
-                source_file=source_file,
-                source_day=(
-                    str(member_docs[0].get("source_day"))
-                    if member_docs and member_docs[0].get("source_day") is not None
-                    else None
-                ),
-                layer=1,
-                component_index=int(component_index),
-                node_indices=member_indices,
-                node_ids=[str(doc["_id"]) for doc in member_docs],
-                node_count=len(member_indices),
-                representative_ids=rep_ids_by_component.get(component_key, []),
-                representative_original_ids=rep_original_ids_by_component.get(component_key, []),
-                representative_node_indices=rep_node_indices_by_component.get(component_key, []),
-                representative_count=len(rep_ids_by_component.get(component_key, [])),
-                mean_features=mean_features,
-                feature_std=feature_std,
-                feature_observation_counts=feature_counts,
-                feature_fields=list(COMPONENT_MEAN_FIELDS),
-                component_statistics={
-                    "internal_edges": int(subgraph.number_of_edges()),
-                    "density": float(nx.density(subgraph)) if len(member_set) > 1 else 0.0,
-                    "is_isolate": bool(len(member_set) == 1 and G.degree(next(iter(member_set))) == 0),
-                },
-            )
-        )
-
     representative_documents = []
     for item, rep_id in zip(reps, representative_object_ids):
         representative_documents.append(
@@ -522,40 +435,26 @@ def run_pooling(
             )
         )
 
-    # Replace only this graph's artifacts after all calculations/documents
-    # have been prepared. Components are inserted before representatives.
-    GraphRepresentative.objects(source_file=source_file).delete()
-    GraphComponent.objects(source_file=source_file).delete()
-
+    # Keep the prior representative set until the replacement inserts succeed.
     try:
-        if component_documents:
-            GraphComponent.objects.insert(component_documents, load_bulk=False)
         if representative_documents:
             GraphRepresentative.objects.insert(
                 representative_documents, load_bulk=False
             )
     except Exception:
-        GraphRepresentative.objects(source_file=source_file).delete()
-        GraphComponent.objects(source_file=source_file).delete()
+        GraphRepresentative.objects(id__in=representative_object_ids).delete()
         raise
 
+    GraphRepresentative.objects(source_file=source_file, id__nin=representative_object_ids).delete()
+    component_result = persist_components(component_metadata, docs=docs)
     log_progress(
-        f"Saved components={len(component_documents)}; "
+        f"Saved components={component_result['component_count']}; "
         f"representatives={len(representative_documents)}"
     )
 
     if create_visualization:
-        image_dir = os.path.join(
-            str(settings.BASE_DIR),
-            "files",
-            "nominal",
-        )
-        os.makedirs(image_dir, exist_ok=True)
-
-        image_path = os.path.join(
-            image_dir,
-            f"{source_file}_representatives.png",
-        )
+        image_dir = document_directory('nominal', source_file, day=docs[0].get('source_day'), chunk=docs[0].get('chunk_index'))
+        image_path = str(image_dir / f"{safe_name(source_file)}_representatives.png")
 
         save_representative_graph(
             edges=edges,

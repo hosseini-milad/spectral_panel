@@ -1,3 +1,4 @@
+from ingestion.utils.document_paths import document_directory
 import json
 from collections import Counter
 from datetime import datetime
@@ -370,7 +371,7 @@ def create_spectral_report(source_file):
         "snapshot_diagnostics": diagnostics,
     }
 
-    report_dir = Path(settings.BASE_DIR) / "files" / "report"
+    report_dir = document_directory("report", source_file)
     image_path = report_dir / "report-spectral.png"
     json_path = report_dir / "report-spectral.json"
     _write_figure(source_file, snapshots, diagnostics, summary, image_path)

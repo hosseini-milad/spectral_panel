@@ -1,3 +1,4 @@
+from ingestion.utils.document_paths import document_directory
 import os
 import re
 
@@ -142,9 +143,7 @@ class Command(BaseCommand):
         # Keep the previous output root and place each graph image in its
         # source-day subfolder: files/nominal/YYYY-MM-DD/.
         date_folder = self._date_folder(graph, source_file) 
-        output_dir = os.path.join(
-            str(settings.BASE_DIR), "files", "nominal", date_folder
-        )
+        output_dir = document_directory("nominal", source_file, day=date_folder)
         os.makedirs(output_dir, exist_ok=True)
         output_path = os.path.join(
             output_dir, f"{source_file}_representatives.png"

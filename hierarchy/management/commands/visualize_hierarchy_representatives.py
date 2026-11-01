@@ -1,3 +1,4 @@
+from ingestion.utils.document_paths import document_directory
 import os
 import re
 import time
@@ -95,7 +96,7 @@ class Command(BaseCommand):
             m = DAY_FROM_SOURCE.search(source_file)
             day = m.group(1) if m else "unknown-day"
 
-        output_dir = os.path.join(str(settings.BASE_DIR), "files", "hierarchy", day)
+        output_dir = document_directory("hierarchy", source_file, layer=2, day=day)
         os.makedirs(output_dir, exist_ok=True)
         full_path = os.path.join(output_dir, f"{source_file}_full.png")
         reps_path = os.path.join(output_dir, f"{source_file}_representatives.png")

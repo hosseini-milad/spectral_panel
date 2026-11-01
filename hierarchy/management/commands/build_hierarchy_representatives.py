@@ -304,6 +304,8 @@ class Command(BaseCommand):
                 f"[HYPER-REPS] Saved {saved:,}/{len(documents):,}"
             )
 
+        from ingestion.services.graph.components import persist_components
+        persist_components(graph_doc, graph_collection="hyper_graph_metadata")
         counts = Counter(doc["label"] for doc in documents)
         self.stdout.write(self.style.SUCCESS(
             f"[HYPER-REPS] SUCCESS source_file={source_file}; "

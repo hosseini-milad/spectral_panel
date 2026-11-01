@@ -1,3 +1,4 @@
+from ingestion.utils.document_paths import document_directory
 import json
 import re
 from pathlib import Path
@@ -106,7 +107,7 @@ class Command(BaseCommand):
 
         results["source_file"] = source_file
         results["chunk_index"] = chunk_index
-        folder = Path(settings.BASE_DIR) / "files"/"evaluation"/options["source_file"]
+        folder = document_directory("report", source_file, chunk=chunk_index)
         folder.mkdir(parents=True, exist_ok=True)
 
         if options["output"]:

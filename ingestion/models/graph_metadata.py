@@ -38,6 +38,10 @@ class GraphMetadata(Document):
     candidate_generation = StringField()
     is_random = BooleanField()
     graph_parameters = DictField()
+    component_status = StringField()
+    component_count = IntField()
+    component_revision = StringField()
+    components_completed_at = DateTimeField()
 
     created_at = DateTimeField(
         default=datetime.utcnow

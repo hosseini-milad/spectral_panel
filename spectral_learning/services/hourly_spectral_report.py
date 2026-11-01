@@ -1,3 +1,4 @@
+from ingestion.utils.document_paths import document_directory
 import json
 import math
 import re
@@ -399,7 +400,8 @@ def create_hourly_spectral_reports(source_files=None):
             f"No persisted spectral records in {SPECTRAL_COLLECTION!r}; "
             "build hourly spectral data before rendering reports."
         )
-    output_dir = Path(settings.BASE_DIR) / "files" / "report" / "spectral"
+    output_dir = document_directory("report") / "spectral"
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     # The node identifiers are intentionally not matched across workbooks;
     # only normalized-Laplacian spectra are compared from hour to hour.
@@ -417,10 +419,12 @@ def create_hourly_spectral_reports(source_files=None):
         })
 
     for report in reports:
+        source_dir = document_directory("report", report['source_file']) / 'spectral'
+        source_dir.mkdir(parents=True, exist_ok=True)
         safe_stem = re.sub(r"[^A-Za-z0-9_-]+", "-", Path(report["source_file"]).stem).strip("-")
         base_name = f"report-spectral-hour-{report['hour_index']:02d}-{safe_stem}"
-        json_path = output_dir / f"{base_name}.json"
-        image_path = output_dir / f"{base_name}.png"
+        json_path = source_dir / f"{base_name}.json"
+        image_path = source_dir / f"{base_name}.png"
         _save_hour_figure(report, image_path)
         plot_report = dict(report)
         plot_report.pop("_id", None)

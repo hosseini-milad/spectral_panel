@@ -1,4 +1,5 @@
 """Render stored multi-signal anomaly-detection evaluation results."""
+from ingestion.utils.document_paths import document_directory
 
 import json
 from pathlib import Path
@@ -100,7 +101,7 @@ def create_model_evaluation_report():
     if not run:
         raise ValueError("No stored anomaly-detection model run was found; train the model first.")
 
-    output_dir = Path(settings.BASE_DIR) / "files" / "report" / "evaluation"
+    output_dir = document_directory("report") / "evaluation"
     output_dir.mkdir(parents=True, exist_ok=True)
     image_path = output_dir / "report-evaluation-overall.png"
     json_path = output_dir / "report-evaluation-overall.json"

@@ -1,3 +1,5 @@
+from ingestion.services.graph.components import persist_components
+from ingestion.utils.document_paths import document_directory
 import re
 import time
 from datetime import datetime
@@ -422,6 +424,9 @@ class Command(BaseCommand):
                 "completed_at": datetime.utcnow(),
             }},
         )
+
+        persist_components(graph_doc, edges=edges, docs=rep_docs,
+                           graph_collection="hyper_graph_metadata")
 
         self.stdout.write(self.style.SUCCESS(
             f"[HIERARCHY] Saved metadata to siem_db.hyper_graph_metadata "

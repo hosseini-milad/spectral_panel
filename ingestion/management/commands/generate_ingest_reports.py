@@ -1,3 +1,4 @@
+from ingestion.utils.document_paths import document_directory
 import re
 from pathlib import Path
 
@@ -26,9 +27,9 @@ class Command(BaseCommand):
         if not sources:
             raise CommandError("No ingested datasets found in metadata.")
 
-        output_dir = Path(settings.BASE_DIR) / "files" / "report" / "ingestion"
         results = []
         for source_file in sources:
+            output_dir = document_directory("report", source_file)
             safe_stem = Path(source_file).stem
             output_path = output_dir / f"report-ingest-{safe_stem}.png"
             try:
@@ -46,6 +47,6 @@ class Command(BaseCommand):
 
         self.stdout.write(
             self.style.SUCCESS(
-                f"Created {len(results)} ingestion reports in {output_dir}."
+                f"Created {len(results)} ingestion reports under document/report/layer1/."
             )
         )

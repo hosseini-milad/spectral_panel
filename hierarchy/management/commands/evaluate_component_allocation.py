@@ -1,3 +1,4 @@
+from ingestion.utils.document_paths import document_directory
 import json
 import math
 import re
@@ -640,14 +641,7 @@ class Command(BaseCommand):
 
         # Keep the prior hierarchy allocation reports untouched. New attack-aware
         # outputs are stored in a dedicated source-specific folder with new names.
-        folder = (
-            Path(settings.BASE_DIR)
-            / "files"
-            / "evaluation"
-            / "hierarchy"
-            / day
-            / source_file
-        )
+        folder = document_directory("hierarchy", source_file, layer=2, day=day)
         folder.mkdir(parents=True, exist_ok=True)
         stem = "component_allocation_attack_aware"
 
