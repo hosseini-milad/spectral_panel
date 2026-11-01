@@ -1,0 +1,31 @@
+REPRESENTATIVE SELECTION EVALUATION
+=============================================
+Source: clustered-day-2026-06-21-chunk-0
+Graph: 2000 nodes, 7842 edges
+Components: 477 | Isolates: 311
+Representatives: 200 (10.0%)
+Normal: 172 | Attack: 28
+
+COVERAGE
+Reachable: 74.9%
+1-hop: 47.3%
+2-hop: 59.4%
+Component coverage: 24.9%
+Mean hops: 2.20
+Max hops: 21
+
+STRUCTURE
+Cross-label edge fraction: 0.19%
+
+NEAREST-REPRESENTATIVE LABEL PROXY
+Macro-F1: 99.87%
+Weighted-F1: 99.92%
+Accuracy: 99.92%
+This proxy is NOT the F1 score of a downstream classifier.
+
+EIGENVECTOR AUDIT
+Top-decile recall: 42.70%
+Top-decile precision: 68.82%
+Mean selected component percentile: 77.23%
+
+Interpret metrics jointly; high proxy F1 does not guarantee representative coverage.

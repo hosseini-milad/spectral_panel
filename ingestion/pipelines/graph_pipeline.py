@@ -12,6 +12,7 @@ NON_FEATURE_FIELDS = {
     "_id", "source_file", "source_path", "source_day", "source_type", "type",
     "created_at", "candidate_sampled_at", "original_id", "label", "label_binary",
     "isRandom", "candidate_generation", "selection_role", "cluster_id",
+    "chunk_index", "normalization_chunk_index",
     "is_outlier_candidate", "timestamp", "flow_start", "window_start", "date",
     "row_index", "normalization_version", "normalization_method", "normalized_at",
     "attack_category", "attack_type", "confidence", "country", "evidence_source",
@@ -26,8 +27,10 @@ def run_graph_pipeline(
     create_visualization=True,
     *,
     source_day=None,
+    chunk_index=None,
     candidate_generation=None,
     is_random=None,
+    feature_fields=None,
     k=12, #12
     threshold=0.995, #0.999
     degree_cap=100, #None,
@@ -41,11 +44,14 @@ def run_graph_pipeline(
     """
     if source_day is not None:
         query = {"source_day": source_day}
+        if chunk_index is not None:
+            query["chunk_index"] = int(chunk_index)
         if candidate_generation is not None:
             query["candidate_generation"] = candidate_generation
         if is_random is not None:
             query["isRandom"] = is_random
-        graph_key = f"clustered-day-{source_day}" if not is_random else f"random-day-{source_day}"
+        base_key = f"clustered-day-{source_day}" if not is_random else f"random-day-{source_day}"
+        graph_key = f"{base_key}-chunk-{int(chunk_index)}" if chunk_index is not None else base_key
     else:
         if not source_file:
             raise ValueError("source_file or source_day is required.")
@@ -62,15 +68,24 @@ def run_graph_pipeline(
     if not docs:
         return None
 
-    available_numeric = [field for field in NUMERIC_FIELDS if field in docs[0]]
-    if available_numeric:
-        feature_keys = available_numeric
+    if feature_fields is not None:
+        requested_fields = list(dict.fromkeys(feature_fields))
+        missing_fields = [field for field in requested_fields if field not in docs[0]]
+        if missing_fields:
+            raise ValueError(
+                f"Requested feature field(s) missing from candidate records: {missing_fields}"
+            )
+        feature_keys = requested_fields
     else:
-        feature_keys = [
+        available_numeric = [field for field in NUMERIC_FIELDS if field in docs[0]]
+        if available_numeric:
+            feature_keys = available_numeric
+        else:
+            feature_keys = [
             key for key, value in docs[0].items()
-            if key not in NON_FEATURE_FIELDS and isinstance(value, (int, float))
-            and not isinstance(value, bool)
-        ]
+                if key not in NON_FEATURE_FIELDS and isinstance(value, (int, float))
+                and not isinstance(value, bool)
+            ]
     if not feature_keys:
         raise ValueError("No numeric feature fields were found for graph construction.")
 
@@ -116,6 +131,7 @@ def run_graph_pipeline(
         "max_neighbors": int(k),
         "feature_count": int(X.shape[1]),
         "feature_fields": feature_keys,
+        "chunk_index": int(chunk_index) if chunk_index is not None else None,
     })
 
     labels = [int(doc.get("label", 0) or 0) for doc in docs]
@@ -145,6 +161,7 @@ def run_graph_pipeline(
             "similarity_threshold": float(threshold),
             "weight": "cosine_similarity",
             "feature_fields": feature_keys,
+            "chunk_index": int(chunk_index) if chunk_index is not None else None,
         },
         # Avoid exceeding MongoDB's 16 MB document limit on large day graphs.
         features=X.tolist() if len(docs) <= 5_000 else [],

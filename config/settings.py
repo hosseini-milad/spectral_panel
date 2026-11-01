@@ -11,6 +11,7 @@ ALLOWED_HOSTS = []
 INSTALLED_APPS = [
     "spectral_learning",
     "ingestion",
+    "hierarchy"
 ]
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 

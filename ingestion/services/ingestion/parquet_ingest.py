@@ -148,8 +148,18 @@ def ingest_parquet_directory(root, batch_size=3000, progress=None):
     for file_number, path in enumerate(files, start=1):
         source_type, label = source_types[path]
         relative_path = path.relative_to(root)
-        date_partition = next((part.split("=", 1)[1] for part in relative_path.parts
-                               if part.startswith("date=")), "0")
+        date_partition = next(
+            (
+                part.split("=", 1)[1]
+                for part in path.parts
+                if part.startswith("date=")
+            ),
+            None,
+        )
+        if date_partition is None:
+            raise ValueError(
+                f"Could not determine source_day from path: {path}"
+            )
         time_match = FILENAME_TIME.search(path.name)
         window_start = datetime.strptime(time_match.group(1), "%Y%m%d%H%M").replace(
             tzinfo=timezone.utc

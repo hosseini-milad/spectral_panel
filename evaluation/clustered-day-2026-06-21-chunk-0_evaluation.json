@@ -1,0 +1,56 @@
+{
+  "graph": {
+    "nodes": 2000,
+    "edges": 7842,
+    "components": 477,
+    "isolates": 311
+  },
+  "representatives": {
+    "count": 200,
+    "ratio": 0.1,
+    "normal": 172,
+    "attack": 28
+  },
+  "class_balance": {
+    "all_normal": 1716,
+    "all_attack": 284,
+    "attack_fraction_all": 0.142,
+    "attack_fraction_selected": 0.14
+  },
+  "edge_homophily": {
+    "cross_label_edges": 15,
+    "cross_label_edge_fraction": 0.0019127773527161439
+  },
+  "coverage": {
+    "reachable_fraction": 0.749,
+    "one_hop_fraction": 0.4735,
+    "two_hop_fraction": 0.5935,
+    "mean_hops_reachable": 2.2022696929238985,
+    "max_hops_reachable": 21,
+    "represented_components": 119,
+    "total_components": 477,
+    "component_coverage_fraction": 0.24947589098532494,
+    "nodes_in_represented_components_fraction": 0.749
+  },
+  "nearest_representative_proxy": {
+    "evaluation_nodes": 1285,
+    "excluded_selected_nodes": 200,
+    "excluded_unreachable_nodes": 502,
+    "excluded_tied_nearest_label_nodes": 13,
+    "macro_f1": 0.9987044816868152,
+    "weighted_f1": 0.9992224269623282,
+    "accuracy": 0.9992217898832685,
+    "balanced_accuracy": 0.9995233555767398
+  },
+  "eigenvector": {
+    "comparison": "within_connected_component_weighted_eigenvector",
+    "top_decile_nodes": 274,
+    "top_decile_selected": 117,
+    "top_decile_recall": 0.42700729927007297,
+    "top_decile_precision": 0.6882352941176471,
+    "mean_selected_component_percentile": 0.7723352218121807,
+    "selected_nontrivial_count": 170
+  },
+  "source_file": "clustered-day-2026-06-21-chunk-0",
+  "chunk_index": 0
+}

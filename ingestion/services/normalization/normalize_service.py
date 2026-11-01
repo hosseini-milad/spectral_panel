@@ -1,41 +1,60 @@
 import math
-
+from ingestion.services.normalization.minmax import LOG_FIELDS, ROBUST_FIELDS
 from .encoders import is_ip, normalize_ip, normalize_text
 from ...utils.constants import BINARY_FIELDS, LABEL_FIELD
 
 
 class Normalizer:
-    DECIMALS = 3
 
     def __init__(self, min_max):
         self.min_max = min_max
 
     @classmethod
     def _bounded(cls, value):
-        """Return a finite [0, 1] value rounded to at most three decimals."""
+        """Return a finite value bounded to [0, 1], without decimal rounding."""
         try:
             number = float(value)
+
             if not math.isfinite(number):
                 return 0
-            return round(min(1.0, max(0.0, number)), cls.DECIMALS)
+
+            return min(1.0, max(0.0, number))
+
         except (TypeError, ValueError, OverflowError):
             return 0
-
     def normalize_numeric(self, key, value):
         try:
             value = float(value)
+
             if not math.isfinite(value):
                 return 0
+
             if key not in self.min_max:
                 return None
 
-            min_v = float(self.min_max[key]["min"])
-            max_v = float(self.min_max[key]["max"])
+            bounds = self.min_max[key]
+
+            if key in LOG_FIELDS:
+                if value < 0:
+                    return 0
+                value = math.log1p(value)
+
+            if key in LOG_FIELDS and "log_min" in bounds and "log_max" in bounds:
+                min_v = float(bounds["log_min"])
+                max_v = float(bounds["log_max"])
+            else:
+                min_v = float(bounds["min"])
+                max_v = float(bounds["max"])
+
             if not math.isfinite(min_v) or not math.isfinite(max_v):
                 return 0
-            if max_v == min_v:
+
+            if max_v <= min_v:
                 return 0
-            return self._bounded((value - min_v) / (max_v - min_v))
+
+            scaled = (value - min_v) / (max_v - min_v)
+            return self._bounded(scaled)
+
         except (TypeError, ValueError, OverflowError, KeyError):
             return None
 
