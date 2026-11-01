@@ -18,6 +18,7 @@ from pymongo import ReplaceOne, UpdateOne
 
 from ingestion.models.graph_component import GraphComponent
 from ingestion.services.pooling.community import detect_communities
+from ingestion.services.graph.component_profiles import _component_profile_payload
 
 NUMERIC_FIELDS = (
     "bytes", "bytes_per_packet", "bytes_per_sec", "duration_s", "packets",
@@ -113,6 +114,13 @@ def persist_components(metadata, *, edges=None, docs=None, graph_collection="gra
                          for field in NUMERIC_FIELDS + CATEGORICAL_FIELDS}, **doc}
                  for key, doc in by_id.items()}
     reps_collection = 'graph_representatives' if layer == 1 else 'hyper_representatives'
+    ordered_docs = [by_id.get(value, {'_id': value}) for value in node_ids]
+    raw_profiles = {}
+    if layer == 1:
+        originals = [str(doc.get('original_id', doc['_id'])) for doc in ordered_docs]
+        raw_by_id = load_node_documents(db, originals, 'security_data')
+        raw_profiles = {node_id: raw_by_id[original] for node_id, original in zip(node_ids, originals)
+                        if original in raw_by_id}
     representatives = list(db[reps_collection].find({'source_file': source}))
     existing = {
         tuple(sorted(row.get('node_ids') or [])): row
@@ -188,6 +196,14 @@ def persist_components(metadata, *, edges=None, docs=None, graph_collection="gra
             created_at=previous.get('created_at') if previous and previous.get('created_at') else datetime.now(timezone.utc),
         )
         component.validate()
+        if layer == 1:
+            profiles = _component_profile_payload(
+                members, [rep['node_index'] for rep in member_reps], ordered_docs,
+                metadata.get('features'), params.get('feature_fields') or [], raw_profiles,
+            )
+            for field, value in profiles.items():
+                setattr(component, field, value)
+            component.validate()
         raw = component.to_mongo().to_dict()
         if len(BSON.encode(raw)) > 16 * 1024 * 1024:
             raise ValueError(f"Component {cid} exceeds MongoDB document limit")

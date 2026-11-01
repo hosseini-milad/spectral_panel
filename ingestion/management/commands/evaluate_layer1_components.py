@@ -11,6 +11,7 @@ from ingestion.models.graph_metadata import GraphMetadata
 from ingestion.models.graph_component import GraphComponent
 from ingestion.models.graph_representative import GraphRepresentative
 from ingestion.services.pooling.community import detect_communities
+from ingestion.utils.document_paths import document_directory
 
 
 def _mean(values):
@@ -88,7 +89,7 @@ class Command(BaseCommand):
             G.add_edge(int(edge["source"]), int(edge["target"]),
                        weight=float(edge.get("weight", 1.0)))
         connected_count = nx.number_connected_components(G) if node_count else 0
-        louvain_count = len(detect_communities(G)) if node_count else 0
+        louvain_count = len(set(detect_communities(G).values())) if node_count else 0
 
         covered_indices = [
             int(index)
@@ -165,7 +166,7 @@ class Command(BaseCommand):
         }
 
         output_dir = Path(options["output_dir"]) if options["output_dir"] else (
-            Path(settings.BASE_DIR) / "files" / "evaluation" / source_file / "layer1_component_structure"
+            document_directory('component', source_file, day=graph.source_day) / 'layer1_component_structure'
         )
         output_dir.mkdir(parents=True, exist_ok=True)
         json_path = output_dir / f"{source_file}_layer1_structure.json"

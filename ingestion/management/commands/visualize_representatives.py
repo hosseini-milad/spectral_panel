@@ -63,8 +63,6 @@ class Command(BaseCommand):
         graph = GraphMetadata.objects(source_file=source_file).first()
         if graph is None:
             raise CommandError(f"Graph not found: {source_file}")
-        if not graph.edges:
-            raise CommandError(f"No edges found for graph: {source_file}")
         if not graph.node_ids:
             raise CommandError(f"No node_ids found for graph: {source_file}")
 

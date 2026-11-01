@@ -34,6 +34,26 @@ document/component/layer1/2026-06-21/chunk-0/
 
 ## Persist and evaluate components
 
+For the complete layer-1 workflow, use one line from the repository directory:
+
+```sh
+python -u manage.py general-action --source-file clustered-day-2026-06-21-chunk-0
+```
+
+This runs normalization, candidate selection, graph construction, representative
+selection, component persistence/schematics, integrity audit, layer-1 structural
+evaluation, allocation evaluation, representative evaluation, and visualization.
+The day and chunk are extracted from the key. Defaults remain 20,000 raw rows per
+chunk, 10% candidates, 10% representatives, k=12, cosine threshold=0.995, and degree
+cap=20. Raw Parquet records for that day must already be ingested.
+
+Complete intermediate outputs are reused; all six reporting/audit stages rerun.
+Existing graph parameters are logged and retained. Graph flags affect newly
+built graphs only. Incompatible/partial cohorts stop the pipeline instead of
+overwriting downstream data. Retry the same one-line command after resolving an
+error. Changing chunk size or representative ratio is not an implicit rebuild.
+This command processes one layer-1 chunk, not whole-day or layer-2 graphs.
+
 Use the project's configured Python environment and running MongoDB:
 
 ```sh

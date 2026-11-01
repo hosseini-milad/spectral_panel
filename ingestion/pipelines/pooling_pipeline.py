@@ -61,212 +61,6 @@ ANOMALY_FIELDS = (
 )
 
 
-<<<<<<< HEAD
-# Explicit allowlist for component summaries. These are numeric/behavioral
-# flow features only; labels, attack descriptors, IPs and threat scores are excluded.
-# Explicit, unsupervised feature schema for component profiles.
-# Threat intelligence, labels, attack descriptors, IPs, ports-as-identifiers,
-# timestamps and provenance fields are intentionally excluded.
-COMPONENT_EXCLUDED_FIELDS = {
-    "label", "label_binary", "source_label", "source_label_binary",
-    "source_label_multiclass", "attack_type", "attack_category",
-    "confidence", "evidence_source", "mitre_tactic", "mitre_technique",
-    "threat_intel_score", "src_ip", "dst_ip", "src_port", "dst_port",
-    "country", "date", "flow_start", "window_start", "flow_file",
-    "source_file", "source_path", "source_day", "source_type", "type",
-    "original_id", "row_index", "behavioral_flags", "dns_query",
-}
-
-# Categorical descriptors retained only as descriptive profiles, never as
-# attack labels or high-cardinality identifiers.
-COMPONENT_CATEGORICAL_FIELDS = (
-    "protocol", "src_port_category", "dst_port_category",
-    "flow_duration_class",
-)
-
-# Legacy representative-only summary fields retained for backward compatibility.
-COMPONENT_MEAN_FIELDS = (
-    "bytes", "bytes_per_packet", "bytes_per_sec",
-    "duration_s", "packets", "packets_per_sec",
-    "flag_ack", "flag_syn", "flag_fin", "flag_psh", "flag_rst", "flag_urg",
-)
-
-COMPONENT_BEHAVIOR_FIELDS = (
-    "flag_ack", "flag_syn", "flag_fin", "flag_psh", "flag_rst", "flag_urg",
-    "is_encrypted_port", "is_syn_only", "proto_icmp", "proto_tcp", "proto_udp",
-)
-
-
-def _finite_numeric(value):
-    try:
-        number = float(value)
-    except (TypeError, ValueError, OverflowError):
-        return None
-    return number if math.isfinite(number) else None
-
-
-def _component_feature_summary(representative_docs):
-    """Mean/std of allow-listed features across this component's reps."""
-    means, stds, counts = {}, {}, {}
-    for field in COMPONENT_MEAN_FIELDS:
-        values = [
-            number
-            for doc in representative_docs
-            if (number := _finite_numeric(doc.get(field))) is not None
-        ]
-        counts[field] = len(values)
-        means[field] = float(np.mean(values)) if values else None
-        stds[field] = float(np.std(values)) if values else None
-    return means, stds, counts
-
-
-def _profile_numeric_matrix(matrix, indices, feature_fields):
-    """Summarize allowed numeric dimensions over the supplied node indices."""
-    result = {}
-    if matrix is None or not feature_fields:
-        return result
-
-    arr = np.asarray(matrix, dtype=np.float64)
-    if arr.ndim != 2 or arr.shape[1] != len(feature_fields):
-        return result
-
-    valid_indices = [int(i) for i in indices if 0 <= int(i) < arr.shape[0]]
-    if not valid_indices:
-        return result
-
-    block = arr[valid_indices]
-    for column, field in enumerate(feature_fields):
-        if field in COMPONENT_EXCLUDED_FIELDS:
-            continue
-        values = block[:, column]
-        values = values[np.isfinite(values)]
-        if values.size == 0:
-            result[field] = {"count": 0}
-            continue
-        result[field] = {
-            "count": int(values.size),
-            "mean": float(np.mean(values)),
-            "std": float(np.std(values)),
-            "min": float(np.min(values)),
-            "q25": float(np.percentile(values, 25)),
-            "median": float(np.percentile(values, 50)),
-            "q75": float(np.percentile(values, 75)),
-            "max": float(np.max(values)),
-        }
-    return result
-
-
-def _profile_categorical(docs):
-    """Frequency profiles for a small, explicit non-label categorical allowlist."""
-    profile = {}
-    for field in COMPONENT_CATEGORICAL_FIELDS:
-        counts = {}
-        valid = 0
-        for doc in docs:
-            value = doc.get(field)
-            if value is None or value == "":
-                continue
-            # Bound cardinality to avoid turning arbitrary strings into features.
-            key = str(value)[:80]
-            counts[key] = counts.get(key, 0) + 1
-            valid += 1
-        profile[field] = {
-            "count": int(valid),
-            "categories": {
-                key: {
-                    "count": int(count),
-                    "fraction": float(count / valid) if valid else 0.0,
-                }
-                for key, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
-            },
-        }
-    return profile
-
-
-def _profile_behavior(docs):
-    """Prevalence of approved binary/behavioral flags; no label fields."""
-    result = {}
-    for field in COMPONENT_BEHAVIOR_FIELDS:
-        values = []
-        for doc in docs:
-            number = _finite_numeric(doc.get(field))
-            if number is not None:
-                values.append(number)
-        result[field] = {
-            "count": len(values),
-            "present_count": int(sum(value > 0.5 for value in values)),
-            "prevalence": (
-                float(sum(value > 0.5 for value in values) / len(values))
-                if values else None
-            ),
-        }
-    return result
-
-
-def _component_profile_payload(
-    member_indices,
-    representative_indices,
-    docs,
-    feature_matrix,
-    feature_fields,
-    raw_docs_by_id=None,
-):
-    member_docs = [docs[index] for index in member_indices]
-    representative_docs = [docs[index] for index in representative_indices]
-    raw_docs_by_id = raw_docs_by_id or {}
-    member_raw_docs = [
-        raw_docs_by_id[str(doc.get("_id"))]
-        for doc in member_docs
-        if str(doc.get("_id")) in raw_docs_by_id
-    ]
-    representative_raw_docs = [
-        raw_docs_by_id[str(doc.get("_id"))]
-        for doc in representative_docs
-        if str(doc.get("_id")) in raw_docs_by_id
-    ]
-
-    node_numeric = _profile_numeric_matrix(
-        feature_matrix, member_indices, feature_fields
-    )
-    representative_numeric = _profile_numeric_matrix(
-        feature_matrix, representative_indices, feature_fields
-    )
-
-    # Fallback for legacy graph metadata without a stored feature matrix.
-    if not node_numeric:
-        fallback_fields = [
-            field for field in COMPONENT_MEAN_FIELDS
-            if field not in COMPONENT_EXCLUDED_FIELDS
-        ]
-        for field in fallback_fields:
-            values = [
-                number for doc in member_docs
-                if (number := _finite_numeric(doc.get(field))) is not None
-            ]
-            if values:
-                arr = np.asarray(values, dtype=np.float64)
-                node_numeric[field] = {
-                    "count": int(arr.size),
-                    "mean": float(np.mean(arr)),
-                    "std": float(np.std(arr)),
-                    "min": float(np.min(arr)),
-                    "q25": float(np.percentile(arr, 25)),
-                    "median": float(np.percentile(arr, 50)),
-                    "q75": float(np.percentile(arr, 75)),
-                    "max": float(np.max(arr)),
-                }
-
-    return {
-        "node_feature_profile": node_numeric,
-        "representative_feature_profile": representative_numeric,
-        "categorical_profile": _profile_categorical(member_raw_docs),
-        "representative_categorical_profile": _profile_categorical(representative_raw_docs),
-        "behavioral_profile": _profile_behavior(member_docs),
-    }
-
-
-=======
->>>>>>> df7795357c49159db67c2c63606e58e16bf6aae4
 def _percentile_rank(values):
     """Return deterministic percentile ranks in [0, 1], handling ties."""
     values = np.asarray(values, dtype=np.float64)
@@ -455,17 +249,8 @@ def run_pooling(
 
     # "Component" in the layer-1 evaluation means a connected component,
     # not a Louvain community. Keep that definition consistent here.
-<<<<<<< HEAD
-    connected_components = sorted(
-        (set(component) for component in nx.connected_components(G)),
-        key=lambda component: (-len(component), min(component)),
-    )
-    log_progress(
-        f"Connected components identified: {len(connected_components)}"
-    )
-=======
     connected_components = ordered_components(G)
->>>>>>> df7795357c49159db67c2c63606e58e16bf6aae4
+    log_progress(f"Connected components identified: {len(connected_components)}")
     node_to_component_index = {}
     for component_index, component_nodes in enumerate(connected_components):
         for node in component_nodes:
@@ -578,7 +363,9 @@ def run_pooling(
         'source_day': docs[0].get('source_day'),
         'node_ids': [str(doc['_id']) for doc in docs],
         'edges': edges,
-        'graph_parameters': {'layer': 1, 'chunk_index': docs[0].get('chunk_index')},
+        'features': features,
+        'graph_parameters': {'layer': 1, 'chunk_index': docs[0].get('chunk_index'),
+                             'feature_fields': feature_fields or []},
     }
     component_result = persist_components(component_metadata, docs=docs, write_reports=False)
     component_object_ids = {
@@ -636,81 +423,6 @@ def run_pooling(
     )
 
     representative_object_ids = [ObjectId() for _ in reps]
-<<<<<<< HEAD
-    rep_ids_by_component = {}
-    rep_original_ids_by_component = {}
-    rep_node_indices_by_component = {}
-
-    for item, rep_id in zip(reps, representative_object_ids):
-        component_id = item["component_id"]
-        rep_ids_by_component.setdefault(component_id, []).append(str(rep_id))
-        rep_original_ids_by_component.setdefault(component_id, []).append(item["original_id"])
-        rep_node_indices_by_component.setdefault(component_id, []).append(int(item["node_index"]))
-
-    component_documents = []
-    for component_index, member_set in enumerate(connected_components):
-        member_indices = sorted(int(node) for node in member_set)
-        member_docs = [docs[index] for index in member_indices]
-        component_oid = component_object_ids[component_index]
-        component_key = str(component_oid)
-
-        selected_rep_indices = rep_node_indices_by_component.get(component_key, [])
-        selected_rep_docs = [docs[index] for index in selected_rep_indices]
-        mean_features, feature_std, feature_counts = _component_feature_summary(
-            selected_rep_docs
-        )
-        profiles = _component_profile_payload(
-            member_indices=member_indices,
-            representative_indices=selected_rep_indices,
-            docs=docs,
-            feature_matrix=features,
-            feature_fields=feature_fields or [],
-            raw_docs_by_id=raw_docs_by_id,
-        )
-        subgraph = G.subgraph(member_set)
-        degrees = [int(degree) for _, degree in subgraph.degree()]
-
-        component_documents.append(
-            GraphComponent(
-                id=component_oid,
-                component_id=component_key,
-                source_file=source_file,
-                source_day=(
-                    str(member_docs[0].get("source_day"))
-                    if member_docs and member_docs[0].get("source_day") is not None
-                    else None
-                ),
-                layer=1,
-                component_index=int(component_index),
-                node_indices=member_indices,
-                node_ids=[str(doc["_id"]) for doc in member_docs],
-                node_count=len(member_indices),
-                representative_ids=rep_ids_by_component.get(component_key, []),
-                representative_original_ids=rep_original_ids_by_component.get(component_key, []),
-                representative_node_indices=rep_node_indices_by_component.get(component_key, []),
-                representative_count=len(rep_ids_by_component.get(component_key, [])),
-                mean_features=mean_features,
-                feature_std=feature_std,
-                feature_observation_counts=feature_counts,
-                feature_fields=sorted(profiles["node_feature_profile"].keys()),
-                node_feature_profile=profiles["node_feature_profile"],
-                representative_feature_profile=profiles["representative_feature_profile"],
-                categorical_profile=profiles["categorical_profile"],
-                representative_categorical_profile=profiles["representative_categorical_profile"],
-                behavioral_profile=profiles["behavioral_profile"],
-                component_statistics={
-                    "internal_edges": int(subgraph.number_of_edges()),
-                    "density": float(nx.density(subgraph)) if len(member_set) > 1 else 0.0,
-                    "avg_degree": float(np.mean(degrees)) if degrees else 0.0,
-                    "max_degree": int(max(degrees)) if degrees else 0,
-                    "min_degree": int(min(degrees)) if degrees else 0,
-                    "is_isolate": bool(len(member_set) == 1 and G.degree(next(iter(member_set))) == 0),
-                },
-            )
-        )
-
-=======
->>>>>>> df7795357c49159db67c2c63606e58e16bf6aae4
     representative_documents = []
     for item, rep_id in zip(reps, representative_object_ids):
         representative_documents.append(
