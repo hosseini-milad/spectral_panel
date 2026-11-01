@@ -256,6 +256,9 @@ class Command(BaseCommand):
             sums_sq += np.square(block).sum(axis=0)
         variances = np.maximum(sums_sq / loaded - np.square(sums / loaded), 0.0)
         active = np.sqrt(variances) > 1e-8
+        if loaded == 1:
+            # A final one-record chunk needs no clustering or variance estimate.
+            active[:] = True
         if not np.any(active):
             matrix._mmap.close()
             ids._mmap.close()

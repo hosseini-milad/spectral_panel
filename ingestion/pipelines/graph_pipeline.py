@@ -102,7 +102,7 @@ def run_graph_pipeline(
         [[number(doc.get(key, 0.0)) for key in feature_keys] for doc in docs],
         dtype=np.float32,
     )
-    variable = np.nanstd(X, axis=0) > 1e-8
+    variable = np.ones(X.shape[1], dtype=bool) if len(docs) == 1 else np.nanstd(X, axis=0) > 1e-8
     X = X[:, variable]
     feature_keys = [key for key, is_variable in zip(feature_keys, variable) if is_variable]
     if X.shape[1] == 0:

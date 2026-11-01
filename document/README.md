@@ -54,6 +54,21 @@ overwriting downstream data. Retry the same one-line command after resolving an
 error. Changing chunk size or representative ratio is not an implicit rebuild.
 This command processes one layer-1 chunk, not whole-day or layer-2 graphs.
 
+To process every chunk of a day automatically, use:
+
+```sh
+python -u manage.py hyper-general-action --source-file clustered-day-2026-06-21
+```
+
+This counts the day's raw records, derives all zero-based chunk indices (including
+a shorter final chunk), and calls the same complete `general-action` workflow
+for each chunk in order. No manual index is required. Defaults and graph/report
+options are forwarded unchanged. On failure it stops before later chunks and
+reports the failed index and cause. Rerunning the same day command reuses complete
+intermediate data and refreshes reports through the canonical chunk workflow.
+`--start-chunk` and `--max-chunks` remain optional controls for a restricted run.
+This command does not build layer-2 hierarchy graphs.
+
 Use the project's configured Python environment and running MongoDB:
 
 ```sh

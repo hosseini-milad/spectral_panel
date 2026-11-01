@@ -100,6 +100,36 @@ class GeneralActionTests(unittest.TestCase):
         self.assertEqual(len(self.db.graph_metadata.find_one()['edges']), 0)
         self.assertTrue(any((Path(self.directory.name) / 'document' / 'nominal').rglob('*.png')))
 
+    def test_whole_day_runs_all_stages_for_each_chunk_including_short_last_chunk(self):
+        self.seed()
+        day_module = importlib.import_module('ingestion.management.commands.hyper-general-action')
+        output = io.StringIO()
+        with patch.object(day_module, 'call_command', wraps=call_command) as dispatch:
+            call_command('hyper-general-action', source_file='clustered-day-2026-06-21',
+                         sample_per_day=60, neighbors=2, degree_cap=3, ratio=.3,
+                         stdout=output, stderr=output)
+        self.assertEqual([call.kwargs['source_file'] for call in dispatch.call_args_list],
+                         [self.source, 'clustered-day-2026-06-21-chunk-1'])
+        self.assertEqual(output.getvalue().count('ALL 10 STAGES COMPLETED'), 2)
+        self.assertIn('ALL REQUESTED CHUNKS FINISHED', output.getvalue())
+        for index, normalized, candidates in [(0, 60, 6), (1, 40, 4)]:
+            self.assertEqual(self.db.normalized_security_data.count_documents({'normalization_chunk_index': index}), normalized)
+            graph = self.db.graph_metadata.find_one({'source_file': f'clustered-day-2026-06-21-chunk-{index}'})
+            self.assertEqual(len(graph['node_ids']), candidates)
+            self.assertTrue(any((Path(self.directory.name) / 'document' / 'component' / 'layer1' /
+                                 '2026-06-21' / f'chunk-{index}').rglob('*layer1_structure.json')))
+
+    def test_whole_day_with_single_record_last_chunk(self):
+        self.seed()
+        call_command('hyper-general-action', source_file='clustered-day-2026-06-21',
+                     sample_per_day=99, start_chunk=1, stdout=io.StringIO(), stderr=io.StringIO())
+        source = 'clustered-day-2026-06-21-chunk-1'
+        graph = self.db.graph_metadata.find_one({'source_file': source})
+        self.assertEqual(len(graph['node_ids']), 1)
+        self.assertEqual(graph['edges'], [])
+        self.assertEqual(self.db.graph_representatives.count_documents({'source_file': source}), 1)
+        self.assertEqual(self.db.graph_components.find_one({'source_file': source})['node_count'], 1)
+
     def test_invalid_date_and_missing_raw_stop_before_dispatch(self):
         with patch.object(self.module, 'call_command') as dispatch:
             with self.assertRaises(CommandError):

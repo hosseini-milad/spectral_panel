@@ -21,7 +21,16 @@ def build_cosine_sparse_knn(X, k=12, threshold=0.995, workers=-1, degree_cap=20,
         raise ValueError("threshold must be in [-1, 1].")
     n = X.shape[0]
     if n < 2:
-        return [], {"mutual_knn_candidates": 0, "similarity_quantiles": {}}
+        cap = 4 * k if degree_cap is None else degree_cap
+        if cap < 1:
+            raise ValueError('degree_cap must be positive.')
+        return [], {
+            'knn_union_candidates': 0, 'mutual_knn_candidates': 0,
+            'duplicate_ring_edges': 0, 'similarity_quantiles': {},
+            'threshold_edge_counts': {str(value): 0 for value in (.95, .99, .995, .999, .9995, .9999, .99995)},
+            'degree_cap': int(cap), 'thresholded_edges_before_cap': 0,
+            'nodes_without_qualifying_neighbors': n,
+        }
 
     norms = np.linalg.norm(X, axis=1, keepdims=True)
     X_unit = np.divide(X, norms, out=np.zeros_like(X), where=norms > 1e-12)
