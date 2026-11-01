@@ -118,9 +118,11 @@ python -u manage.py build_hierarchy_graph --day 2026-06-21 --force
 This uses all layer-1 components, including components without representatives,
 and produces Meta-components plus complete visual lineage automatically. Outputs
 are under `document/hierarchy/layer2/<day>/whole-day/hierarchy-components-day-<day>-layer-2/runs/<run-id>/`.
-Open `lineage.html` for an offline interactive view of chunks → child components →
-Meta-components. Inspect `overview.png`, all `lineage_page_*.png` pages, and
-`evaluation.json`; full memberships are in JSON and CSV. Previous runs and legacy
+HTML and `lineage_page_*` images are not generated in the current phase.
+Inspect `overview.png`, `component_graph.png`, `evaluation_metrics.png`, and
+`evaluation_metrics.csv`. The full metric table also appears in the console,
+`evaluation.txt`, and `evaluation.json`, with units, definitions and assessments.
+Complete memberships remain in JSON and CSV. Previous runs and legacy
 representative-based graphs are retained. See `hierarchy/README.txt` for metrics,
 defaults, missing-data rules and MongoDB collection names.
 

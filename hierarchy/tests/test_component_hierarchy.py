@@ -1,4 +1,5 @@
 import copy
+import csv
 import io
 import json
 import tempfile
@@ -92,13 +93,27 @@ class ComponentHierarchyTests(unittest.TestCase):
         self.assertAlmostEqual(meta['numeric']['bytes']['mean'], .115)
         self.assertAlmostEqual(meta['numeric']['bytes']['std'], float(np.std([.10, .12, .11, .13])))
         self.assertEqual(meta['behavior']['flag_syn'], {'count': 4, 'present': 4, 'prevalence': 1.})
-        for name in ('evaluation', 'text', 'overview', 'interactive_lineage', 'lineage', 'graph'):
+        for name in ('evaluation', 'text', 'overview', 'metrics_csv', 'metrics_image', 'lineage', 'graph'):
             self.assertGreater(Path(paths[name]).stat().st_size, 0)
-        pages = evaluation['lineage_pages']
-        self.assertEqual(sorted(i for page in pages for i in page['node_indices']), list(range(6)))
-        html = Path(paths['interactive_lineage']).read_text()
-        self.assertNotIn('https://', html)
-        self.assertIn('Meta-component', html)
+        self.assertNotIn('interactive_lineage', paths)
+        self.assertNotIn('lineage_pages', evaluation)
+        folder = Path(paths['directory'])
+        self.assertFalse(list(folder.glob('*.html')))
+        self.assertFalse(list(folder.glob('lineage_page_*')))
+        self.assertEqual(evaluation['generated_outputs'], {'html': False, 'lineage_pages': False})
+        metrics = {row['metric']: row for row in evaluation['metrics_table']}
+        self.assertAlmostEqual(metrics['compression_percent']['value'], 100 * (6 - 4) / 6)
+        self.assertAlmostEqual(metrics['singleton_meta_percent']['value'], 50.)
+        self.assertAlmostEqual(metrics['unmerged_input_percent']['value'], 100 * 2 / 6)
+        self.assertEqual(metrics['partition_exactly_once']['assessment'], 'PASS')
+        self.assertLess(metrics['numeric_moment_max_abs_error']['value'], 1e-12)
+        self.assertIsNone(metrics['spectral_preservation']['value'])
+        self.assertEqual(metrics['spectral_preservation']['assessment'], 'Not measured')
+        self.assertIn('EVALUATION METRICS', Path(paths['text']).read_text())
+        with Path(paths['metrics_csv']).open(encoding='utf-8-sig') as stream:
+            exported = list(csv.DictReader(stream))
+        self.assertEqual(len(exported), len(metrics))
+        self.assertTrue(all(row['definition'] and row['unit'] for row in exported))
 
     def test_force_retains_previous_run_and_failed_report_preserves_active_pointer(self):
         first, _ = build_hierarchy(self.day)
@@ -140,19 +155,15 @@ class ComponentHierarchyTests(unittest.TestCase):
         self.assertTrue(nx.is_connected(graph))
         self.assertTrue(all(value == 2 for _, value in graph.degree()))
 
-    def test_large_meta_lineage_is_paginated_without_omitting_children(self):
-        from hierarchy.services.component_hierarchy_report import write_lineage_pages
-        nodes, _, _ = load_components(self.db, self.day)
-        children = [copy.deepcopy(nodes[0]) for _ in range(170)]
-        for index, child in enumerate(children):
-            child.update(node_index=index, component_id=str(index), chunk_index=index % 15, component_index=index // 15)
-        metas = [{'meta_index': 0, 'meta_component_id': 'test-meta', 'node_indices': list(range(170)),
-                  'component_count': 170, 'member_node_count': 340}]
-        folder = Path(self.directory.name) / 'pagination'; folder.mkdir(exist_ok=True)
-        pages = write_lineage_pages(folder, children, metas)
-        self.assertEqual(len(pages), 3)
-        self.assertEqual(sorted(index for page in pages for index in page['node_indices']), list(range(170)))
-        self.assertTrue(all((folder / page['png']).exists() and (folder / page['svg']).exists() for page in pages))
+    def test_metrics_detect_aggregation_errors_without_claiming_topology_preservation(self):
+        from hierarchy.services.hierarchy_metrics import build_metrics_table
+        evaluation, paths = build_hierarchy(self.day)
+        nodes = json.loads(Path(paths['lineage']).read_text())['nodes']
+        evaluation['meta_components'][0]['numeric']['bytes']['mean'] += .1
+        metrics = {row['metric']: row for row in build_metrics_table(evaluation, nodes)}
+        self.assertEqual(metrics['numeric_moment_max_abs_error']['assessment'], 'FAIL')
+        self.assertEqual(metrics['coarsened_edge_preservation']['assessment'], 'Not measured')
+        self.assertEqual(metrics['categorical_counts_conserved']['assessment'], 'PASS')
 
     def test_missing_category_is_not_zero_similarity_and_labels_are_unused(self):
         nodes, _, _ = load_components(self.db, self.day)

@@ -74,22 +74,25 @@ document/hierarchy/layer2/YYYY-MM-DD/whole-day/
   hierarchy-components-day-YYYY-MM-DD-layer-2/runs/<run-id>/
     evaluation.json / evaluation.txt
     lineage.json                  complete IDs, descriptors and memberships
-    lineage.html                  standalone interactive chunk/component/meta explorer
+    evaluation_metrics.csv       explicit metric values, units, definitions, assessments
+    evaluation_metrics.png / evaluation_metrics.svg
     overview.png / overview.svg
     component_graph.png / component_graph.svg
-    lineage_page_001.png / lineage_page_001.svg (and subsequent pages)
     component_membership.csv
     chunk_meta_matrix.csv
 
-Open lineage.html locally in a browser. Filter by chunk, Meta-component or child
-component ID; click a component for source and neighbor details, or a Meta for
-membership/profiles. All data is embedded; no Internet or web server is needed.
-Membership lines are distinct from similarity edges. Static lineage pages retain
-every child exactly once (80 children per page); large metas may span pages and
-show both total children and children shown. The dashboard bounds the matrix to
-30 metas plus an explicitly aggregated Other column; full membership remains in
-CSV, JSON, page diagrams and the interactive explorer. Candidate-node coverage
-refers to layer-1 graph inputs, not unsampled raw flow records.
+HTML and lineage_page images are not generated in this reporting phase. Prior
+run files are retained. Complete memberships remain in lineage.json and CSV.
+The overview includes a compact table; the console, evaluation.txt, evaluation.json,
+and evaluation_metrics.csv contain the full metric table. Observed compression,
+singleton rates (with explicit input/output denominators), cross-chunk grouping,
+sparsity, coverage and chaining are distinguished from aggregation conservation.
+Pooled numeric moments and categorical counts are checked for conservation.
+Inter-meta edge, spectral and rare-behavior preservation are explicitly marked
+NOT MEASURED: these are not implied by complete membership coverage.
+The dashboard bounds the matrix to 30 metas plus an explicitly aggregated Other
+column. The full chunk/meta matrix remains in CSV. Candidate-node coverage refers
+to layer-1 graph inputs, not unsampled raw flow records.
 
 Legacy comparison
 -----------------

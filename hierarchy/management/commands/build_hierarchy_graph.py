@@ -3,10 +3,11 @@ from datetime import datetime
 from django.core.management.base import BaseCommand, CommandError
 
 from hierarchy.services.component_hierarchy import build_hierarchy
+from hierarchy.services.hierarchy_metrics import format_metrics_table
 
 
 class Command(BaseCommand):
-    help = 'Build a component-based layer-2 graph, persist Meta-components and render complete chunk/component/meta lineage.'
+    help = 'Build a component-based layer-2 graph, persist Meta-components and export static diagrams and evaluation tables.'
     requires_system_checks = []
 
     def add_arguments(self, parser):
@@ -35,4 +36,5 @@ class Command(BaseCommand):
             f"meta_components={evaluation['meta_component_count']}"))
         for name, value in paths.items():
             self.stdout.write(f'[META] {name}: {value}')
+        self.stdout.write(format_metrics_table(evaluation['metrics_table']))
         self.stdout.write('[META] Legacy representative-based hierarchy data was preserved.')

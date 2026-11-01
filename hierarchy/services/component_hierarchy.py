@@ -366,6 +366,8 @@ def build_hierarchy(day, *, force=False, threshold=.85, neighbors=8, degree_cap=
     nodes, sources, coverage = load_components(db, day)
     similarity = Similarity(nodes)
     graph, diagnostics = component_graph(nodes, similarity, threshold, neighbors, degree_cap, progress)
+    if progress:
+        progress(f'[META] Grouping {len(nodes)} components and evaluating internal similarities...')
     metas = meta_components(nodes, graph, similarity, key, threshold)
     if sorted(i for meta in metas for i in meta['node_indices']) != list(range(len(nodes))):
         raise ValueError('Meta-component partition is incomplete')
@@ -420,6 +422,8 @@ def build_hierarchy(day, *, force=False, threshold=.85, neighbors=8, degree_cap=
            'created_at': datetime.now(timezone.utc), 'input_digest': digest(sources)}
     db.component_hierarchy_runs.insert_one(run)
     try:
+        if progress:
+            progress('[META] Writing versioned graph and Meta-components to MongoDB...')
         for collection, rows in [('component_hierarchy_nodes', nodes),
                                  ('component_hierarchy_edges', [dict(source=a, target=b, **data) for a, b, data in graph.edges(data=True)]),
                                  ('meta_components', metas)]:
@@ -431,7 +435,11 @@ def build_hierarchy(day, *, force=False, threshold=.85, neighbors=8, degree_cap=
                     db[collection].insert_many(batch)
             db[collection].create_index([('run_id', 1)])
         from hierarchy.services.component_hierarchy_report import write_reports
+        if progress:
+            progress(f'[META] Rendering static diagrams and metric tables ({len(nodes)} graph nodes); no HTML or lineage pages...')
         paths = write_reports(evaluation, nodes, graph)
+        if progress:
+            progress('[META] Reports complete; verifying source versions before publishing the run...')
         for source in sources:
             matches = list(db.graph_metadata.find({'source_file': source['source_file']}))
             current = matches[0] if len(matches) == 1 else None
