@@ -1,0 +1,10 @@
+﻿metric,value,evidence
+raw_flow_records,307988,observed_user_report
+candidate_graph_nodes,30799,observed_user_report
+chunk_graphs,16,observed_user_report
+component_graph_nodes,6275,observed_user_report
+component_graph_edges,11107,observed_user_report
+connected_components,1731,observed_user_report
+isolated_component_nodes,1279,observed_user_report
+expected_zero_modes,1731,inferred_topology_not_eigensolver
+expected_laplacian_rank,4544,inferred_topology_not_eigensolver
