@@ -17,6 +17,13 @@ class GraphComponent(Document):
     source_file = StringField(required=True)
     source_day = StringField()
     layer = IntField(default=1)
+    graph_collection = StringField(default="graph_metadata")
+    graph_revision = StringField()
+    chunk_index = IntField(null=True)
+    node_collection = StringField()
+    node_original_ids = ListField(StringField())
+    node_lineage = ListField(DictField())
+    parent_component_ids = ListField(StringField())
     component_index = IntField(required=True)
 
     node_indices = ListField(IntField())
@@ -28,11 +35,15 @@ class GraphComponent(Document):
     representative_node_indices = ListField(IntField())
     representative_count = IntField(default=0)
 
-    # Backward-compatible representative-only summary (legacy fields).
+    # Numeric summaries over ALL member nodes; representative summaries are separate.
     mean_features = DictField()
     feature_std = DictField()
     feature_observation_counts = DictField()
     feature_fields = ListField(StringField())
+    representative_profile = DictField()
+    categorical_profile = DictField()
+    profile_scope = StringField(default="all_component_nodes")
+    missing_node_ids = ListField(StringField())
 
     # Full component profile computed from every node in the component.
     node_feature_profile = DictField()

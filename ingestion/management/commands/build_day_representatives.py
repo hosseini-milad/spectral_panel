@@ -215,9 +215,9 @@ class Command(BaseCommand):
                 f'Graph not found for source_file={key!r}; run --stage graph first. '
                 'A legacy whole-day graph is not used as an implicit baseline.'
             )
-        if (stored_reps or stored_components) and not opts['force']:
+        if stored_reps and not opts['force']:
             raise CommandError(
-                'Representatives or components already exist for this day/chunk; '
+                'Representatives already exist for this day/chunk; '
             'no overwrite performed.'
             )
 

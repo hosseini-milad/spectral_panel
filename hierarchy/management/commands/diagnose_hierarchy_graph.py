@@ -10,6 +10,7 @@ Optional:
 
 This command DOES NOT modify graph metadata, edges, representatives, or source records.
 """
+from ingestion.utils.document_paths import document_directory
 import csv
 import math
 import re
@@ -289,7 +290,7 @@ class Command(BaseCommand):
             if docs_by_id[str(r["original_id"])].get(f) is None
         )
 
-        output_dir = Path(settings.BASE_DIR) / "files" / "hierarchy" / "diagnostics" / day
+        output_dir = document_directory("hierarchy", graph_key, layer=2, day=day)
         output_dir.mkdir(parents=True, exist_ok=True)
         write_csv(output_dir / "chunk_connectivity.csv", connectivity_rows,
                   ["chunk_a", "chunk_b", "nodes_a", "nodes_b", "inter_edges",

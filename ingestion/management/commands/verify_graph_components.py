@@ -3,6 +3,7 @@ from django.core.management.base import BaseCommand, CommandError
 from ingestion.models.graph_metadata import GraphMetadata
 from ingestion.models.graph_representative import GraphRepresentative
 from ingestion.models.graph_component import GraphComponent
+from ingestion.services.graph.components import build_component_graph, ordered_components
 
 
 class Command(BaseCommand):
@@ -29,12 +30,22 @@ class Command(BaseCommand):
         )
 
         issues = []
+        if graph.component_status and graph.component_status != 'complete':
+            issues.append(f'Component storage is not complete: {graph.component_status}')
+        try:
+            expected = {frozenset(nodes) for nodes in ordered_components(build_component_graph(graph_node_ids, graph.edges or []))}
+            actual = {frozenset(row.get('node_indices') or []) for row in components}
+            if actual != expected or len(actual) != len(components):
+                issues.append('Stored components differ from the actual connected-component partition.')
+        except ValueError as exc:
+            issues.append(str(exc))
         component_ids = set()
         component_indexes = set()
         covered_indices = []
         covered_ids = []
         reps_by_id = {str(rep["_id"]): rep for rep in reps}
         rep_counts = {}
+        linked_rep_ids = []
 
         for component in components:
             cid = str(component.get("component_id", ""))
@@ -80,6 +91,7 @@ class Command(BaseCommand):
 
             rep_counts[cid] = 0
             for rep_id, original_id in zip(representative_ids, representative_original_ids):
+                linked_rep_ids.append(rep_id)
                 rep = reps_by_id.get(rep_id)
                 if rep is None:
                     issues.append(f"{cid}: referenced representative {rep_id} is missing.")
@@ -89,6 +101,8 @@ class Command(BaseCommand):
                     issues.append(f"{cid}: representative {rep_id} has wrong component_id.")
                 if str(rep.get("original_id")) != original_id:
                     issues.append(f"{cid}: representative {rep_id} original_id mismatch.")
+                if original_id not in node_ids or rep.get('node_index') not in node_indices:
+                    issues.append(f'{cid}: representative {rep_id} is not a member of its component.')
 
         if len(covered_indices) != n:
             issues.append(f"Covered node-index count {len(covered_indices)} != graph nodes {n}.")
@@ -108,6 +122,8 @@ class Command(BaseCommand):
         ]
         if orphan_reps:
             issues.append(f"{len(orphan_reps)} representatives reference missing components.")
+        if set(linked_rep_ids) != set(reps_by_id) or len(linked_rep_ids) != len(set(linked_rep_ids)):
+            issues.append('Component representative lists do not reference every representative exactly once.')
 
         self.stdout.write(
             f"[COMPONENT AUDIT] covered_nodes={len(set(covered_indices))}/{n}; "

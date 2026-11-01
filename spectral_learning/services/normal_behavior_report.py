@@ -1,4 +1,5 @@
 """Schematic reports for normal-reference behavior in hourly similarity graphs."""
+from ingestion.utils.document_paths import document_directory
 
 import json
 import re
@@ -146,9 +147,12 @@ def create_normal_behavior_reports():
         int(item["hour_index"]): item
         for item in run.get("hourly_label_diagnostic_metrics", [])
     }
-    output_dir = Path(settings.BASE_DIR) / "files" / "report" / "normal-behavior"
+    output_dir = document_directory("report") / "normal-behavior"
+    output_dir.mkdir(parents=True, exist_ok=True)
     sources = list(database.hourly_similarity_spectral_snapshots.find({}).sort("hour_index", 1))
     for source in sources:
+        source_dir = document_directory("report", source['source_file']) / 'normal-behavior'
+        source_dir.mkdir(parents=True, exist_ok=True)
         source_scores = [item for item in scores if item["source_file"] == source["source_file"]]
         if not source_scores:
             continue
@@ -159,7 +163,7 @@ def create_normal_behavior_reports():
         known_attack = [item for item in source_scores if item.get("label_for_evaluation") == 1]
         safe_stem = re.sub(r"[^A-Za-z0-9_-]+", "-", Path(source["source_file"]).stem).strip("-")
         base_name = f"normal-behavior-hour-{int(source['hour_index']):02d}-{safe_stem}"
-        image_path = output_dir / f"{base_name}.png"
+        image_path = source_dir / f"{base_name}.png"
         _save_hour_figure(source, source_scores, projected, reference_points, threshold, image_path, edges)
         source_scores_sorted = sorted(source_scores, key=lambda item: item["anomaly_score"], reverse=True)
         detail = {
@@ -192,13 +196,14 @@ def create_normal_behavior_reports():
                 "Normal reference is available only from records labeled normal in this dataset.",
             ],
         }
-        with (output_dir / f"{base_name}.json").open("w", encoding="utf-8") as file:
+        with (source_dir / f"{base_name}.json").open("w", encoding="utf-8") as file:
             json.dump(detail, file, ensure_ascii=False, indent=2)
         reports.append({
             "hour_index": int(source["hour_index"]), "source_file": source["source_file"],
             "node_count": len(source_scores), "anomaly_count": len(flagged),
             "normal_labeled_count": len(known_normal), "attack_labeled_count": len(known_attack),
-            "figure": image_path.name, "json": f"{base_name}.json",
+            "figure": str(image_path),
+            "json": str(source_dir / f"{base_name}.json"),
         })
 
     overall_image = output_dir / "normal-behavior-overall.png"

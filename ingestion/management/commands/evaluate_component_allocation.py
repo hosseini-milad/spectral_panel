@@ -1,3 +1,4 @@
+from ingestion.utils.document_paths import document_directory
 import json
 import math
 import re
@@ -267,7 +268,7 @@ class Command(BaseCommand):
         })
         match = DAY_RE.search(source_file)
         day = match.group(1) if match else "unknown-day"
-        folder = Path(settings.BASE_DIR) / "files" / "evaluation" / "hierarchy" / day
+        folder = document_directory("hierarchy", source_file, layer=2, day=day)
         folder.mkdir(parents=True, exist_ok=True)
         stem = f"{source_file}_component_allocation"
         json_path = folder / f"{stem}.json"

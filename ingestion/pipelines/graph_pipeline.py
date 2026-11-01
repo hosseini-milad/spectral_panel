@@ -6,6 +6,8 @@ from ingestion.models.sampled_data import SampledSecurityData
 from ingestion.services.graph.graph_stats import compute_sparse_graph_stats
 from ingestion.services.graph.graph_visualizer import save_graph
 from ingestion.services.graph.similarity import build_cosine_sparse_knn
+from ingestion.services.graph.components import persist_components
+from ingestion.utils.document_paths import document_directory, safe_name
 
 
 NON_FEATURE_FIELDS = {
@@ -135,9 +137,12 @@ def run_graph_pipeline(
     })
 
     labels = [int(doc.get("label", 0) or 0) for doc in docs]
+    from ingestion.models.graph_representative import GraphRepresentative
+    if GraphRepresentative.objects(source_file=graph_key).count():
+        raise ValueError('Cannot rebuild a graph with saved representatives; remove downstream artifacts deliberately first.')
     path = None
     if create_visualization and source_day is None and len(docs) <= 5_000:
-        path = f"files/graphs/{graph_key}_graph.png"
+        path = str(document_directory('nominal', graph_key, day=source_day, chunk=chunk_index) / f"{safe_name(graph_key)}_graph.png")
         save_graph(edges, labels, path)
 
     graph_doc = GraphMetadata(
@@ -168,5 +173,7 @@ def run_graph_pipeline(
     )
     GraphMetadata.objects(source_file=graph_key).delete()
     graph_doc.save()
+    component_result = persist_components(graph_doc.to_mongo().to_dict(), docs=docs)
 
-    return {**stats, "graph_key": graph_key, "graph_path": path}
+    return {**stats, "graph_key": graph_key, "graph_path": path,
+            "component_count": component_result['component_count'], "component_reports": component_result['paths']}

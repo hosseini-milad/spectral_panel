@@ -1,3 +1,4 @@
+from ingestion.utils.document_paths import document_directory
 import json
 import math
 import time
@@ -595,12 +596,7 @@ class Command(BaseCommand):
         results = _evaluate(graph, representatives, source_file)
         # Keep each graph/chunk evaluation in its own directory.
         # Example: files/evaluation/clustered-day-2026-06-21-chunk-0/
-        output_dir = (
-            Path(settings.BASE_DIR)
-            / "files"
-            / "evaluation"
-            / source_file
-        )
+        output_dir = document_directory("component", source_file)
         output_dir.mkdir(parents=True, exist_ok=True)
         stem = "component_allocation"
 

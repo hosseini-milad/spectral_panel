@@ -1,3 +1,4 @@
+from ingestion.utils.document_paths import document_directory
 import json
 import math
 import os
@@ -568,7 +569,7 @@ class Command(BaseCommand):
 
         day_match = DAY_RE.search(source_file)
         day = day_match.group(1) if day_match else "unknown-day"
-        folder = Path(settings.BASE_DIR) / "files" / "evaluation" / "hierarchy" / day
+        folder = document_directory("hierarchy", source_file, layer=2, day=day)
         folder.mkdir(parents=True, exist_ok=True)
         json_path = Path(options["output"]) if options["output"] else folder / f"{source_file}_evaluation.json"
         json_path.parent.mkdir(parents=True, exist_ok=True)
