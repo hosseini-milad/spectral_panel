@@ -18,6 +18,7 @@ class EncoderMetaReportTests(unittest.TestCase):
         self.manifest.write_text(json.dumps(dict(source_day='2026-06-22', run_id='test', status='complete', chunks=[dict(graph_key='graph', chunk_index=0, nodes=3, paths=dict(directory=str(self.folder)))])))
         self.lineage = self.root / 'lineage.json'
         self.data = dict(nodes=[dict(source_day='2026-06-22', source_file='graph', component_id='C0', member_node_ids=['a', 'b'], node_count=2, chunk_index=0), dict(source_day='2026-06-22', source_file='graph', component_id='C1', member_node_ids=['c'], node_count=1, chunk_index=0)], meta_components=[dict(meta_component_id='M0', node_indices=[0, 1])])
+        self.data['edges'] = [dict(source=0, target=1)]
         self.output = self.root / 'out'
 
     def run_report(self):
@@ -33,6 +34,8 @@ class EncoderMetaReportTests(unittest.TestCase):
             self.assertEqual(arrays['chunk_component_counts'].tolist(), [[2]])
         self.assertEqual(result['candidate_nodes'], 3)
         self.assertTrue((self.output / 'meta_encoder_schematic.png').is_file())
+        self.assertTrue((self.output / 'neighborhood_summary.json').is_file())
+        self.assertEqual(result['neighborhood']['macro_graph_neighbor_recall'], 1.)
 
     def test_stale_candidate_membership_is_rejected(self):
         self.data['nodes'][0]['member_node_ids'] = ['a', 'different']
