@@ -46,3 +46,9 @@ or learned collections. They are written by spectral_analysis and
 spectral_message_passing respectively, in the same configured database. Refresh
 and inspect the full Compass list before concluding they are absent. Retain runs
 and active pointers alongside node/edge arrays: their provenance is required.
+
+Layer-1 Autoencoder training additionally uses `autoencoder_runs` and
+`autoencoder_active`. Only metadata, metrics and file paths are stored there;
+node latents, reconstructions, scalers and model weights are versioned files under
+`document/autoencoder/layer1/<day>/...`. It does not append to the earlier
+spectral_message_passing_nodes or overwrite those checkpoints.

@@ -322,3 +322,21 @@ intervention rows in JSON/phase manifests. These diagnostics are not retroactive
 available in older uploaded runs. The coverage split is **encoded vs unencoded**;
 unencoded includes isolates AND any basis-limited nodes, so it is not an exact
 isolate-vs-connected comparison.
+
+## Shared layer-1 Autoencoder
+
+```console
+python -u manage.py train_layer1_autoencoder --day 2026-06-21 --force
+```
+
+The executable shared L1 masked AE experiment lives in `autoencoder_inputs.py`,
+`autoencoder_training.py`, `autoencoder_pipeline.py`, `autoencoder_reports.py` and
+`models/layer1_autoencoder.py`. Read `document/autoencoder/README.md` for the full
+Persian input/evaluation contract and output layout. Three variants share the
+same split, scaler and masking protocol: feature-only, graph, spectral-aware graph.
+One model per variant is shared across chunks; raw training-only scaling, absent
+columns, constant-feature shift diagnostics and withheld-edge spectral recomputation
+are explicit. Outputs/checkpoints are versioned under document/autoencoder/layer1.
+DB stores only autoencoder_runs and autoencoder_active metadata/pointers.
+This is a reconstruction experiment, not calibrated attack detection or a weekly
+hierarchical model. Existing spectral/MP runs and source data are not overwritten.
