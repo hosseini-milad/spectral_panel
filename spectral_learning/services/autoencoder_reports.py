@@ -161,7 +161,8 @@ def write_run(day, run_id, prepared, scaler, audit, models, parameters, source_a
     lines += ['', 'Limitations:', *manifest['limitations']]
     (folder / 'evaluation.txt').write_text('\n'.join(lines)+'\n', encoding='utf-8')
     architecture(folder / 'architecture', f'{day}: shared layer-1 Autoencoder architecture (executed training run)')
-    fig, axes = plt.subplots(1, 3, figsize=(17, 6))
+    # The membership table needs a taller canvas for days with many chunks.
+    fig, axes = plt.subplots(1, 3, figsize=(17, max(6, .27 * (len(prepared) + 1) + 2)))
     for variant, model in models.items():
         axes[0].plot([r['epoch'] for r in model['history']], [r['validation_loss'] for r in model['history']], label=variant)
     axes[0].set(title='Validation objective; checkpoint selected without test', xlabel='Epoch', ylabel='Huber/BCE + weighted structure loss'); axes[0].legend()
