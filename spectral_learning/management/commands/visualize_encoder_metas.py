@@ -15,6 +15,7 @@ class Command(BaseCommand):
         parser.add_argument('--manifest', help='Explicit completed L1 Autoencoder manifest; otherwise newest local run.')
         parser.add_argument('--lineage', help='Explicit hierarchy lineage.json; otherwise newest local evaluation run.')
         parser.add_argument('--top', type=int, default=12)
+        parser.add_argument('--neighbors', type=int, default=10, help='Cosine kNN count for post-hoc neighborhood diagnostics.')
 
     def handle(self, *args, **options):
         try:
@@ -34,8 +35,13 @@ class Command(BaseCommand):
             if source['source_day'] != options['day']:
                 raise ValueError('Manifest day does not match --day.')
             output = root / 'autoencoder' / 'layer1' / options['day'] / 'whole-day' / 'runs' / source['run_id'] / 'meta_view' / lineage.parent.name
-            result = build_meta_view(manifest, lineage, output, options['top'])
+            result = build_meta_view(manifest, lineage, output, options['top'], options['neighbors'])
         except Exception as exc:
             raise CommandError(f'Meta encoder visualization failed: {exc}') from exc
         self.stdout.write(self.style.SUCCESS(f'Membership verified: {result["components"]} components, {result["meta_components"]} metas, {result["candidate_nodes"]} candidate nodes.'))
         self.stdout.write(f'Manifest: {manifest}\nLineage: {lineage}\nOutput: {output}')
+        if 'neighborhood' in result:
+            report = result['neighborhood']
+            self.stdout.write(f'Neighborhood recall: {report["macro_graph_neighbor_recall"]}; isolates: {report["graph_isolates"]}; valid queries: {report["graph_neighbor_recall_valid_components"]}')
+        else:
+            self.stdout.write(self.style.WARNING('Lineage has no edges field; neighborhood diagnostics were not generated.'))

@@ -8,7 +8,7 @@ from .spectral_reports import dump_json, save
 import matplotlib.pyplot as plt
 
 
-def build_meta_view(manifest_path, lineage_path, output, top=12):
+def build_meta_view(manifest_path, lineage_path, output, top=12, neighbors=10):
     manifest_path, lineage_path, output = map(Path, (manifest_path, lineage_path, output))
     manifest = json.loads(manifest_path.read_text(encoding='utf-8-sig'))
     lineage = json.loads(lineage_path.read_text(encoding='utf-8-sig'))
@@ -116,4 +116,8 @@ def build_meta_view(manifest_path, lineage_path, output, top=12):
         latent_dimension=means.shape[1], shown_meta_indices=ranked, chunks=chunks,
         semantics='Post-hoc node-weighted pooling of full-view spectral L1 latent; not an L2-trained encoder, neighborhood objective, temporal comparison or anomaly detector.')
     dump_json(output / 'report_manifest.json', summary)
+    if 'edges' in lineage:
+        from .neighborhood_report import write_neighborhood_report
+        summary['neighborhood'] = write_neighborhood_report(output, component_mean, assignment, meta_ids, nodes, lineage['edges'], neighbors)
+        dump_json(output / 'report_manifest.json', summary)
     return summary
