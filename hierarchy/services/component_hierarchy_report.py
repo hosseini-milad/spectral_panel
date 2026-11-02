@@ -96,6 +96,8 @@ def write_reports(evaluation, nodes, graph):
     evaluation['generated_outputs'] = {'html': False, 'lineage_pages': False}
     evaluation.pop('lineage_pages', None)
     matrix, chunks = write_dashboard(folder, evaluation, nodes, graph)
+    write_membership_schematic(folder, evaluation, nodes)
+    write_meta_components(folder, evaluation)
     fields = ['metric', 'label', 'value', 'unit', 'assessment', 'definition']
     with (folder / 'evaluation_metrics.csv').open('w', newline='', encoding='utf-8-sig') as stream:
         writer = csv.DictWriter(stream, fieldnames=fields)
@@ -135,4 +137,62 @@ def write_reports(evaluation, nodes, graph):
             'text': str(folder / 'evaluation.txt'), 'overview': str(folder / 'overview.png'),
             'metrics_csv': str(folder / 'evaluation_metrics.csv'),
             'metrics_image': str(folder / 'evaluation_metrics.png'), 'lineage': str(folder / 'lineage.json'),
-            'graph': str(folder / 'component_graph.png')}
+            'graph': str(folder / 'component_graph.png'),
+            'meta_schematic': str(folder / 'meta_component_schematic.png'),
+            'meta_components': str(folder / 'meta_components.png')}
+
+
+def write_membership_schematic(folder, evaluation, nodes):
+    """Membership arrows are lineage, never invented edges between Meta-components."""
+    metas = evaluation['meta_components'][:12]
+    chunks = sorted({node['chunk_index'] for node in nodes})
+    fig, ax = plt.subplots(figsize=(17, max(10, .30 * len(chunks))))
+    ax.axis('off')
+    chunk_y = {chunk: .90 - .76 * i / max(1, len(chunks)-1) for i, chunk in enumerate(chunks)}
+    for chunk, y in chunk_y.items():
+        ax.text(.06, y, f'chunk {chunk}', ha='center', va='center', transform=ax.transAxes, fontsize=8,
+                bbox=dict(boxstyle='round,pad=.3', fc='#dceefa', ec='#58778b'))
+    for row, meta in enumerate(metas):
+        y = .90 - .065 * row
+        counts = {}
+        for index in meta['node_indices']:
+            chunk = nodes[index]['chunk_index']; counts[chunk] = counts.get(chunk, 0) + 1
+        for chunk, count in counts.items():
+            ax.annotate('', xy=(.30, y), xytext=(.11, chunk_y[chunk]), xycoords='axes fraction',
+                        arrowprops=dict(arrowstyle='->', alpha=.25, color='#618096', lw=min(3, 1 + np.log1p(count)/3)))
+        shown = meta['node_indices'][:4]
+        for slot, index in enumerate(shown):
+            node = nodes[index]; x = .35 + .09 * slot
+            ax.plot(x, y, 'o', color='#7c64aa', markersize=8, transform=ax.transAxes)
+            ax.text(x, y-.020, f'ch{node["chunk_index"]}:C{node["component_index"]}', fontsize=6, ha='center', transform=ax.transAxes)
+        suffix = f' +{len(meta["node_indices"])-len(shown)} more' if len(meta['node_indices']) > len(shown) else ''
+        ax.text(.65, y, suffix, fontsize=7, transform=ax.transAxes, ha='center')
+        ax.annotate('', xy=(.77, y), xytext=(.70, y), xycoords='axes fraction', arrowprops=dict(arrowstyle='->', color='#618096'))
+        ax.text(.88, y, f'M{meta["meta_index"]}: {meta["component_count"]} components | {meta["member_node_count"]} candidate nodes',
+                ha='center', va='center', fontsize=8, transform=ax.transAxes,
+                bbox=dict(boxstyle='round,pad=.4', fc='#dff1e4', ec='#58778b'))
+    ax.text(.06, .97, 'Source chunks', ha='center', transform=ax.transAxes, fontsize=11)
+    ax.text(.49, .97, 'Layer-1 components (up to 4 shown per group)', ha='center', transform=ax.transAxes, fontsize=11)
+    ax.text(.88, .97, 'Daily layer-2 Meta-components', ha='center', transform=ax.transAxes, fontsize=11)
+    ax.text(.5, .04, f'Showing {len(metas)}/{len(evaluation["meta_components"])} largest Meta-components; ALL memberships in lineage.json and component_membership.csv.\nArrows show membership, not temporal/causal edges. Singleton groups are retained in the complete data.',
+            ha='center', transform=ax.transAxes, fontsize=10)
+    ax.set_title(evaluation['source_file'] + '\nDaily hierarchy membership schematic', fontsize=15, pad=25)
+    save_figure(fig, folder / 'meta_component_schematic')
+
+
+def write_meta_components(folder, evaluation):
+    metas = evaluation['meta_components']; count = len(metas)
+    columns = max(1, int(np.ceil(np.sqrt(count * 1.7))))
+    indices = np.arange(count); sizes = np.array([meta['component_count'] for meta in metas])
+    chunks = np.array([len(meta['source_chunks']) for meta in metas])
+    fig, ax = plt.subplots(figsize=(16, max(6, np.ceil(count / columns) * .18)))
+    points = ax.scatter(indices % columns, -(indices // columns), s=6 + 300 * sizes / max(sizes),
+                        c=chunks, cmap='viridis', edgecolors='#586875', linewidths=.25)
+    for i in range(count if count <= 80 else min(20, count)):
+        ax.annotate(f'M{metas[i]["meta_index"]}', (i % columns, -(i // columns)),
+                    xytext=(0, 8), textcoords='offset points', ha='center', fontsize=6)
+    fig.colorbar(points, ax=ax, label='Number of distinct source chunks')
+    ax.set_title(f'{evaluation["source_file"]}\nALL {count} daily Meta-components; marker area increases with child-component count')
+    ax.text(.5, -.08, 'Each marker is one Meta-component. Grid position has no temporal meaning; no inter-meta edges are invented.\nExact IDs, sizes and memberships: lineage.json / component_membership.csv.', transform=ax.transAxes, ha='center', fontsize=10)
+    ax.margins(.06, .16); ax.axis('off'); fig.tight_layout()
+    save_figure(fig, folder / 'meta_components')

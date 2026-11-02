@@ -355,7 +355,7 @@ def meta_components(nodes, graph, similarity, key, threshold):
     return result
 
 
-def build_hierarchy(day, *, force=False, threshold=.85, neighbors=8, degree_cap=12, progress=None):
+def build_hierarchy(day, *, force=False, threshold=.85, neighbors=8, degree_cap=12, progress=None, render_reports=True):
     if not 0 <= threshold <= 1 or neighbors < 1 or degree_cap < 2:
         raise ValueError('Require threshold in [0, 1], neighbors >= 1, degree_cap >= 2')
     db = get_db()
@@ -419,7 +419,8 @@ def build_hierarchy(day, *, force=False, threshold=.85, neighbors=8, degree_cap=
         evaluation['warnings'].append('Categorical fields with more than 128 distinct values were omitted from similarity to bound memory usage.')
     run = {'_id': run_id, 'source_file': key, 'source_day': day, 'status': 'building',
            'parameters': evaluation['parameters'], 'sources': sources,
-           'created_at': datetime.now(timezone.utc), 'input_digest': digest(sources)}
+           'created_at': datetime.now(timezone.utc), 'input_digest': digest(sources),
+           'evaluation_snapshot': {key: value for key, value in evaluation.items() if key != 'meta_components'}}
     db.component_hierarchy_runs.insert_one(run)
     try:
         if progress:
@@ -434,12 +435,14 @@ def build_hierarchy(day, *, force=False, threshold=.85, neighbors=8, degree_cap=
                 if batch:
                     db[collection].insert_many(batch)
             db[collection].create_index([('run_id', 1)])
-        from hierarchy.services.component_hierarchy_report import write_reports
+        paths = {}
+        if render_reports:
+            from hierarchy.services.component_hierarchy_report import write_reports
+            if progress:
+                progress(f'[META] Rendering static diagrams and metric tables ({len(nodes)} graph nodes); no HTML or lineage pages...')
+            paths = write_reports(evaluation, nodes, graph)
         if progress:
-            progress(f'[META] Rendering static diagrams and metric tables ({len(nodes)} graph nodes); no HTML or lineage pages...')
-        paths = write_reports(evaluation, nodes, graph)
-        if progress:
-            progress('[META] Reports complete; verifying source versions before publishing the run...')
+            progress('[META] Verifying source versions before publishing the run...')
         for source in sources:
             matches = list(db.graph_metadata.find({'source_file': source['source_file']}))
             current = matches[0] if len(matches) == 1 else None
