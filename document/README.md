@@ -162,3 +162,8 @@ python -u manage.py evaluate_hierarchy_graph --day 2026-06-21
 قرار می‌گیرد. `meta_components.png` همهٔ فرامؤلفه‌ها و `meta_component_schematic.png`
 مسیر عضویت چانک، مؤلفه و فرامؤلفه را نشان می‌دهد. عضویت کامل در JSON/CSV است.
 شناسهٔ نسخهٔ مبدأ در `hierarchy_run_id` ثبت می‌شود. جزئیات در `hierarchy/README.md`.
+
+ساخت گراف روزانه به‌صورت پیش‌فرض فقط چانک‌های موجود روز را ترکیب می‌کند؛ کامل‌بودن
+روز شرط نیست. `day_coverage` وضعیت partial/complete/unverified، شمارهٔ چانک‌های
+موجود و غایب و درصد پوشش تعداد چانک‌ها را ثبت می‌کند. گزینهٔ اختیاری
+`--require-complete-day` برای ردکردن روز دارای چانک غایب است.

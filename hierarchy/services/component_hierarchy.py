@@ -52,7 +52,7 @@ def source_fingerprints(graph, components):
     }
 
 
-def load_components(db, day):
+def load_components(db, day, *, require_complete_day=False):
     """Read-only audit of every source graph and membership before building."""
     pattern = rf'^clustered-day-{re.escape(day)}-chunk-(\d+)$'
     graphs = list(db.graph_metadata.find({'source_file': {'$regex': pattern}}))
@@ -73,9 +73,17 @@ def load_components(db, day):
     if len(sizes) > 1:
         raise ValueError('Mixed normalization chunk sizes for this day; resolve source partitioning first.')
     raw_count = db.security_data.count_documents({'source_day': day})
-    expected = (raw_count + sizes[0] - 1) // sizes[0] if raw_count and sizes else max(by_chunk) + 1
-    if set(by_chunk) != set(range(expected)):
+    known_expected = (raw_count + sizes[0] - 1) // sizes[0] if raw_count and sizes else None
+    expected = known_expected if known_expected is not None else max(by_chunk) + 1
+    missing = sorted(set(range(expected)) - set(by_chunk))
+    if known_expected is not None and any(index >= expected for index in by_chunk):
+        raise ValueError('Chunk index exceeds the known raw-day partition; resolve source partitioning first.')
+    if require_complete_day and missing:
         raise ValueError(f'Incomplete day graphs; expected chunks 0..{expected - 1}, found {sorted(by_chunk)}')
+    day_coverage = dict(status='partial' if missing else ('complete' if known_expected is not None else 'unverified'),
+                        included_chunk_indices=sorted(by_chunk), expected_chunk_count=known_expected,
+                        missing_chunk_indices=missing, chunk_coverage_percent=(100 * len(by_chunk) / known_expected if known_expected else None),
+                        expected_count_verified=known_expected is not None)
     nodes, sources, used_ids, used_originals = [], [], set(), set()
     for chunk, graph in sorted(by_chunk.items()):
         source = graph['source_file']
@@ -149,7 +157,8 @@ def load_components(db, day):
                           'structure': component.get('component_statistics', {}),
                           'missing_raw_count': len(docs) - len(raw)})
     return nodes, sources, {'raw_day_records': raw_count,
-                            'trailing_chunk_completeness_verified': bool(raw_count and sizes)}
+                            'trailing_chunk_completeness_verified': known_expected is not None and not missing,
+                            'day_coverage': day_coverage}
 
 
 class Similarity:
@@ -355,7 +364,7 @@ def meta_components(nodes, graph, similarity, key, threshold):
     return result
 
 
-def build_hierarchy(day, *, force=False, threshold=.85, neighbors=8, degree_cap=12, progress=None, render_reports=True):
+def build_hierarchy(day, *, force=False, threshold=.85, neighbors=8, degree_cap=12, progress=None, render_reports=True, require_complete_day=False):
     if not 0 <= threshold <= 1 or neighbors < 1 or degree_cap < 2:
         raise ValueError('Require threshold in [0, 1], neighbors >= 1, degree_cap >= 2')
     db = get_db()
@@ -363,7 +372,10 @@ def build_hierarchy(day, *, force=False, threshold=.85, neighbors=8, degree_cap=
     previous = db.component_hierarchy_graphs.find_one({'_id': key})
     if previous and not force:
         raise ValueError(f'{key} exists; use --force to create a new version (previous runs are retained).')
-    nodes, sources, coverage = load_components(db, day)
+    nodes, sources, coverage = load_components(db, day, require_complete_day=require_complete_day)
+    if progress:
+        c = coverage['day_coverage']
+        progress(f"[META] Day coverage: {c['status']}; included chunks={c['included_chunk_indices']}; expected={c['expected_chunk_count']}")
     similarity = Similarity(nodes)
     graph, diagnostics = component_graph(nodes, similarity, threshold, neighbors, degree_cap, progress)
     if progress:
@@ -411,7 +423,9 @@ def build_hierarchy(day, *, force=False, threshold=.85, neighbors=8, degree_cap=
     evaluation['warnings'] = []
     if evaluation['components_with_categorical_data'] < len(nodes):
         evaluation['warnings'].append('Some components have insufficient categorical coverage; missing families were excluded, not zero-filled.')
-    if not coverage['trailing_chunk_completeness_verified']:
+    if coverage['day_coverage']['status'] == 'partial':
+        evaluation['warnings'].append('Partial day: only the listed available chunk graphs are included; missing chunks are not modelled.')
+    if not coverage['day_coverage']['expected_count_verified']:
         evaluation['warnings'].append('Trailing day completeness could not be checked against raw count and normalization chunk size.')
     if not np.any(similarity.active):
         evaluation['warnings'].append('No varying numeric fields across component quantile signatures; inspect whether data or scaling is degenerate.')
@@ -420,6 +434,7 @@ def build_hierarchy(day, *, force=False, threshold=.85, neighbors=8, degree_cap=
     run = {'_id': run_id, 'source_file': key, 'source_day': day, 'status': 'building',
            'parameters': evaluation['parameters'], 'sources': sources,
            'created_at': datetime.now(timezone.utc), 'input_digest': digest(sources),
+           'day_coverage': coverage['day_coverage'],
            'evaluation_snapshot': {key: value for key, value in evaluation.items() if key != 'meta_components'}}
     db.component_hierarchy_runs.insert_one(run)
     try:

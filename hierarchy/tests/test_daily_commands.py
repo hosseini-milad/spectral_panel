@@ -67,6 +67,30 @@ class DailyCommandTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'partition'):
             evaluate_hierarchy('2026-06-21')
 
+    def test_partial_day_builds_by_default_and_reports_missing_chunks(self):
+        self.db.graph_metadata.delete_one({'source_file': 'clustered-day-2026-06-21-chunk-1'})
+        call_command('build_hierarchy_graph', day='2026-06-21', stdout=io.StringIO())
+        run = self.db.component_hierarchy_runs.find_one({'status': 'complete'})
+        coverage = run['day_coverage']
+        self.assertEqual(coverage['status'], 'partial')
+        self.assertEqual(coverage['included_chunk_indices'], [0])
+        self.assertEqual(coverage['missing_chunk_indices'], [1])
+        self.assertEqual(coverage['chunk_coverage_percent'], 50)
+        evaluation, _ = evaluate_hierarchy('2026-06-21')
+        self.assertEqual(evaluation['day_coverage'], coverage)
+        self.assertFalse(any('could not be checked' in warning for warning in evaluation['warnings']))
+        self.assertTrue(evaluation['integrity']['all_components_assigned_once'])
+        with self.assertRaisesRegex(CommandError, 'Incomplete day graphs'):
+            call_command('build_hierarchy_graph', day='2026-06-21', force=True, require_complete_day=True, stdout=io.StringIO())
+        self.assertEqual(self.db.component_hierarchy_graphs.find_one()['active_run_id'], run['_id'])
+
+    def test_noncontiguous_available_chunks_are_supported(self):
+        self.db.graph_metadata.delete_one({'source_file': 'clustered-day-2026-06-21-chunk-0'})
+        evaluation, _ = build_hierarchy('2026-06-21', render_reports=False)
+        self.assertEqual(evaluation['day_coverage']['included_chunk_indices'], [1])
+        self.assertEqual(evaluation['day_coverage']['missing_chunk_indices'], [0])
+        self.assertEqual(evaluation['component_count'], 3)
+
     def test_old_commands_are_gone_and_options_are_validated(self):
         commands = get_commands()
         remaining = {name for name, app in commands.items() if app == 'hierarchy'}

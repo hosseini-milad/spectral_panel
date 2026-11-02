@@ -119,6 +119,8 @@ def hierarchy_input(db, run):
     source = {'collection': 'component_hierarchy_runs', 'hierarchy_run_id': run['_id'],
               'parameters': run.get('parameters'), 'input_digest': run.get('input_digest'),
               'time_basis': 'source_day_partition_no_inferred_temporal_edges'}
+    if run.get('day_coverage'):
+        source['day_coverage'] = run['day_coverage']
     lineage = [{'chunk_index': row['chunk_index'], 'source_file': row['source_file'],
                 'component_id': row['component_id'], 'source_graph_revision': row.get('source_graph_revision')}
                for row in nodes]
