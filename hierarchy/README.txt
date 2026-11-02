@@ -1,8 +1,13 @@
 Component-based layer-2 hierarchy
 =================================
 
-Run one line after all layer-1 day chunks finish:
+After all layer-1 day chunks finish, build the saved daily graph:
 python -u manage.py build_hierarchy_graph --day 2026-06-21 --force
+
+Then evaluate that saved graph and draw all schematics:
+python -u manage.py evaluate_hierarchy_graph --day 2026-06-21
+
+Full command contract: hierarchy/README.md. The build CLI does not render reports.
 
 The default command now uses graph_components (layer=1), not graph_representatives.
 Every valid component participates, including isolates and components without
@@ -62,7 +67,7 @@ Collections:
   meta_components: immutable per-run Meta-component membership and profiles
 
 --force creates a NEW run and retains prior runs and reports. The active pointer
-changes only after database writes and all report generation succeed, source
+changes only after database writes succeed, source
 fingerprints still match, and no concurrent build changed the active pointer.
 A failed run is recorded as failed and leaves the previous active run intact.
 Layer-1 graphs/components and legacy hyper_graph_metadata/hyper_graph_edges are
@@ -71,13 +76,15 @@ not overwritten. Compare active_run_id when querying per-run collections.
 Outputs
 -------
 document/hierarchy/layer2/YYYY-MM-DD/whole-day/
-  hierarchy-components-day-YYYY-MM-DD-layer-2/runs/<run-id>/
+  hierarchy-components-day-YYYY-MM-DD-layer-2/runs/<report-id>/
     evaluation.json / evaluation.txt
     lineage.json                  complete IDs, descriptors and memberships
     evaluation_metrics.csv       explicit metric values, units, definitions, assessments
     evaluation_metrics.png / evaluation_metrics.svg
     overview.png / overview.svg
     component_graph.png / component_graph.svg
+    meta_components.png / meta_components.svg       ALL Meta-components
+    meta_component_schematic.png / .svg            chunk/component/meta lineage
     component_membership.csv
     chunk_meta_matrix.csv
 
@@ -94,15 +101,14 @@ The dashboard bounds the matrix to 30 metas plus an explicitly aggregated Other
 column. The full chunk/meta matrix remains in CSV. Candidate-node coverage refers
 to layer-1 graph inputs, not unsampled raw flow records.
 
-Legacy comparison
------------------
-The previous representative-based implementation remains available as:
-python -u manage.py build_representative_hierarchy_graph --day 2026-06-21
-Its data and existing representative/hybrid visualization commands retain their
-old meaning. Do not run build_hierarchy_representatives or the legacy hierarchy
-visualization commands expecting them to consume the NEW component graph. The
-new build_hierarchy_graph already performs Meta-component evaluation and renders
-all required diagrams automatically.
+Removed legacy commands
+-----------------------
+Representative/hybrid build, representative selection/visualization/evaluation
+and old diagnosis/allocation management actions have been removed. Existing
+database data is retained. Only build_hierarchy_graph and evaluate_hierarchy_graph
+remain as hierarchy management commands. Evaluation reads a complete saved version
+(default active day, optional --run-id) and does not rebuild its graph. Every
+report has its own ID and records hierarchy_run_id for the original graph version.
 
 Validation
 ----------

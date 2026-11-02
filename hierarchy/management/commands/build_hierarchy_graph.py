@@ -3,11 +3,10 @@ from datetime import datetime
 from django.core.management.base import BaseCommand, CommandError
 
 from hierarchy.services.component_hierarchy import build_hierarchy
-from hierarchy.services.hierarchy_metrics import format_metrics_table
 
 
 class Command(BaseCommand):
-    help = 'Build a component-based layer-2 graph, persist Meta-components and export static diagrams and evaluation tables.'
+    help = 'Build a component-based layer-2 graph, persist daily Meta-components. Use evaluate_hierarchy_graph for evaluation and schematics.'
     requires_system_checks = []
 
     def add_arguments(self, parser):
@@ -27,7 +26,7 @@ class Command(BaseCommand):
         try:
             evaluation, paths = build_hierarchy(options['day'], force=options['force'],
                                                threshold=options['threshold'], neighbors=options['neighbors'],
-                                               degree_cap=options['degree_cap'], progress=self.stdout.write)
+                                               degree_cap=options['degree_cap'], progress=self.stdout.write, render_reports=False)
         except Exception as exc:
             raise CommandError(f'Component hierarchy failed: {exc}') from exc
         self.stdout.write(self.style.SUCCESS(
@@ -36,5 +35,6 @@ class Command(BaseCommand):
             f"meta_components={evaluation['meta_component_count']}"))
         for name, value in paths.items():
             self.stdout.write(f'[META] {name}: {value}')
-        self.stdout.write(format_metrics_table(evaluation['metrics_table']))
+        self.stdout.write(f"[META] run_id: {evaluation['run_id']}")
+        self.stdout.write(f"[META] Next: python -u manage.py evaluate_hierarchy_graph --day {options['day']} --run-id {evaluation['run_id']}")
         self.stdout.write('[META] Legacy representative-based hierarchy data was preserved.')

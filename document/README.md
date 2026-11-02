@@ -144,3 +144,21 @@ and invariant message-passing inputs, and writes metrics/PNG/SVG under
 `document/spectral/layerN/...` plus a cross-level summary under
 `document/spectral/phase1/...`. Above-Meta levels remain explicitly planning-only
 until real graph operators exist. No old ordinal-hour training commands are used.
+
+## ساخت و ارزیابی مجزای گراف روزانه
+
+برای گراف روزانهٔ مؤلفه‌محور فقط دو فرمان hierarchy فعال هستند:
+
+```console
+python -u manage.py build_hierarchy_graph --day 2026-06-21 --force
+```
+
+```console
+python -u manage.py evaluate_hierarchy_graph --day 2026-06-21
+```
+
+اولی گراف و فرامؤلفه‌ها را ذخیره می‌کند؛ دومی همان نسخهٔ ذخیره‌شده را ارزیابی
+و ترسیم می‌کند. خروجی زیر `document/hierarchy/layer2/<day>/whole-day/<graph>/runs/<report-id>/`
+قرار می‌گیرد. `meta_components.png` همهٔ فرامؤلفه‌ها و `meta_component_schematic.png`
+مسیر عضویت چانک، مؤلفه و فرامؤلفه را نشان می‌دهد. عضویت کامل در JSON/CSV است.
+شناسهٔ نسخهٔ مبدأ در `hierarchy_run_id` ثبت می‌شود. جزئیات در `hierarchy/README.md`.
