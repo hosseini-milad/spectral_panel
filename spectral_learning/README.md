@@ -340,3 +340,26 @@ are explicit. Outputs/checkpoints are versioned under document/autoencoder/layer
 DB stores only autoencoder_runs and autoencoder_active metadata/pointers.
 This is a reconstruction experiment, not calibrated attack detection or a weekly
 hierarchical model. Existing spectral/MP runs and source data are not overwritten.
+# نمایش فرامولفه‌ها در کنار خروجی انکدر
+
+بدون تغییر معماری، آموزش مجدد یا نوشتن در MongoDB:
+
+```console
+python -u manage.py visualize_encoder_metas --day 2026-06-21
+python -u manage.py visualize_encoder_metas --day 2026-06-22
+```
+
+این دستور جدیدترین manifest آتو‌انکودر و lineage ارزیابی سلسله‌مراتب همان روز
+را از document می‌خواند. برای انتخاب نسخه مشخص، `--manifest` و `--lineage`
+بدهید. فایل‌های inputs.npz و spectral_outputs.npz تمام چانک‌های همان اجرا
+باید موجود باشند؛ فقط manifest/metrics کافی نیست. عضویت تمام مولفه‌ها و
+شناسه کاندیدهایشان دقیقاً تطبیق داده می‌شود و ناسازگاری خطا می‌دهد.
+
+خروجی در `document/autoencoder/layer1/<day>/whole-day/runs/<run>/meta_view/<hierarchy-run>/`
+شامل شماتیک PNG/SVG، آمار CSV، بردارهای NPZ تمام فرامولفه‌ها و manifest منشأ است.
+پنل‌ها عضویت چانک/فرامولفه، میانگین بردار نهفته و PCA مولفه‌ها را نشان می‌دهند.
+میانگین و انحراف معیار نهفته با وزن تعداد کاندید و احتساب پراکندگی درون و بین
+مولفه ساخته می‌شوند. پیش‌فرض ۱۲ فرامولفه بزرگ در heatmap نمایش داده می‌شود؛
+تمام گروه‌ها در خروجی عددی حفظ می‌شوند. انکدر طیفی لایه۱ استفاده می‌شود؛ این
+دستور انکدر لایه۲ یا هدف بازسازی همسایگی آموزش نمی‌دهد. بردارهای مدل‌های مستقل
+روزانه هم‌تراز نیستند و مختصات نهفته نام رفتاری یا احتمال حمله ندارند.
