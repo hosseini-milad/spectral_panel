@@ -12,9 +12,10 @@ Full command contract: hierarchy/README.md. The build CLI does not render report
 The default command now uses graph_components (layer=1), not graph_representatives.
 Every valid component participates, including isolates and components without
 representatives. It audits each chunk's actual graph partition and traces every
-candidate member to its sampled record and original ID. Missing/incomplete chunk
-graphs, stale revisions, overlapping memberships, and missing sampled records stop
-construction. When raw counts and normalization chunk size are available, the
+candidate member to its sampled record and original ID. Incomplete existing chunk graphs, stale revisions, overlapping memberships, and
+missing sampled records stop construction. Missing day chunks are allowed by
+default; only available graphs are included. --require-complete-day optionally
+rejects missing chunks. When raw counts and normalization chunk size are available, the
 expected trailing chunk is checked too. Otherwise trailing completeness is marked
 unverified in the report. Input source data is read-only.
 
@@ -114,3 +115,7 @@ Validation
 ----------
 python manage.py test ingestion.tests hierarchy.tests
 The suites use disposable MongoDB databases and temporary report directories.
+
+Partial-day coverage: saved day_coverage records included and missing chunk indices,
+known expected count and partial/complete/unverified status. Evaluation reports
+chunk-count coverage separately from candidate membership coverage.

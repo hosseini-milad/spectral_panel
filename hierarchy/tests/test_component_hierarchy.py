@@ -133,7 +133,7 @@ class ComponentHierarchyTests(unittest.TestCase):
     def test_missing_chunk_or_bad_membership_is_rejected_before_writes(self):
         self.db.graph_metadata.delete_one({'source_file': f'clustered-day-{self.day}-chunk-1'})
         with self.assertRaisesRegex(ValueError, 'Incomplete day graphs'):
-            build_hierarchy(self.day)
+            build_hierarchy(self.day, require_complete_day=True)
         self.assertEqual(self.db.component_hierarchy_runs.count_documents({}), 0)
 
     def test_missing_member_and_stale_revision_are_rejected(self):

@@ -1,6 +1,6 @@
 # Daily component hierarchy: two commands
 
-Build the daily L2 graph from **all** L1 chunk components, including components
+Build the daily L2 graph from **available** L1 chunk components, including components
 without representatives and singleton components:
 
 ```console
@@ -65,3 +65,22 @@ hyper_graph collections and are not part of the current component workflow.
 
 Spectral analysis and message passing remain separate later stages. A second
 structural aggregation within the same day is not a weekly temporal layer.
+
+## Partial-day processing
+
+By default only existing chunk graphs for the selected day are aggregated; neither
+a complete raw-day partition nor consecutive chunk indices are required. Every
+included graph must still have complete/consistent component storage and member
+references. Mixed partition sizes and out-of-range indices remain errors.
+
+`day_coverage` records included indices, expected full-day count (when known),
+missing indices, coverage by chunk count, and `partial` / `complete` / `unverified`
+status. This is not raw-flow or candidate coverage. Missing trailing chunks do not
+prevent graph construction. Coverage is retained in the saved run, evaluation
+JSON/metric table and spectral source provenance. Unknown full-day counts remain
+unverified; no full-day completeness is inferred from the highest present index.
+
+Optional `--require-complete-day` restores rejection of missing chunks. The default
+command requires no extra option for partial processing. Adding further chunks
+later requires a new hierarchy version to include them; existing snapshots and
+reports keep their original selected population.

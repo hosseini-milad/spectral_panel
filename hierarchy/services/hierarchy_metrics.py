@@ -30,6 +30,12 @@ def build_metrics_table(evaluation, nodes):
         return 100 * numerator / denominator if denominator else None
 
     row('chunk_count', 'Source chunks', evaluation['chunk_count'], 'count', 'Number of included layer-1 chunk graphs.')
+    coverage = evaluation.get('day_coverage')
+    if coverage:
+        row('day_coverage_status', 'Day coverage status', coverage['status'], 'status', 'Partial/unverified input is not an integrity failure of included components.', 'Descriptive')
+        row('expected_day_chunks', 'Expected chunks for full day', coverage['expected_chunk_count'], 'count', 'From raw population and normalization chunk size; unavailable if not verified.')
+        row('day_chunk_coverage_percent', 'Included share of expected day chunks', coverage['chunk_coverage_percent'], '%', 'Chunk-count coverage, not candidate or raw-flow coverage.')
+        row('missing_day_chunks', 'Missing day chunks', len(coverage['missing_chunk_indices']), 'count', 'Missing within known day partition, or observed index span when full count is unknown.')
     row('input_components', 'Input layer-1 components', n, 'count', 'All valid input components, including those without representatives.')
     row('candidate_nodes', 'Candidate nodes traced', evaluation['candidate_node_count'], 'count', 'Member nodes of layer-1 graphs; excludes unsampled raw flows.')
     row('meta_components', 'Output Meta-components', m, 'count', 'Connected components in the sparse layer-2 similarity graph.')
