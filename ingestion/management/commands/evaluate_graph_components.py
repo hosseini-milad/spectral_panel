@@ -5,18 +5,18 @@ from ingestion.services.graph.components import persist_components
 
 
 class Command(BaseCommand):
-    help = 'Persist/backfill connected components and export complete JSON/TXT and PNG/SVG schematics.'
+    help = 'Persist/backfill layer-1 components. For the daily layer-2 graph use evaluate_hierarchy_graph.'
     requires_system_checks = []
 
     def add_arguments(self, parser):
         target = parser.add_mutually_exclusive_group(required=True)
         target.add_argument('--source-file')
         target.add_argument('--all', action='store_true')
-        parser.add_argument('--layer', type=int, choices=[1, 2], default=1)
+        parser.add_argument('--layer', type=int, choices=[1], default=1)
 
     def handle(self, *args, **options):
         db = get_db()
-        collection = 'graph_metadata' if options['layer'] == 1 else 'hyper_graph_metadata'
+        collection = 'graph_metadata'
         query = {'source_file': options['source_file']} if options['source_file'] else {}
         count = 0
         for metadata in db[collection].find(query).sort('source_file', 1):
