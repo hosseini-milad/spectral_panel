@@ -4,6 +4,7 @@ Only source_day changes. Event timestamps, labels and raw features stay intact.
 Interrupted writes are retained and can be resumed; no records are deleted.
 """
 
+from contextlib import contextmanager
 from copy import deepcopy
 from datetime import date, timedelta
 from hashlib import sha256
@@ -11,7 +12,8 @@ from tempfile import TemporaryFile
 from uuid import uuid4
 
 from bson import BSON, ObjectId, decode_file_iter
-from pymongo import UpdateOne
+from pymongo import MongoClient, UpdateOne, timeout
+from pymongo.errors import PyMongoError
 
 
 START = date(2026, 6, 21)
@@ -49,14 +51,52 @@ def _content(record):
     return record
 
 
-def build_artificial_day(db, dry_run=True):
+@contextmanager
+def _operation(name, seconds, progress):
+    if progress:
+        progress(name)
+    try:
+        with timeout(seconds):
+            yield
+    except PyMongoError as exc:
+        detail = "time limit exceeded" if exc.timeout else type(exc).__name__
+        raise RuntimeError(
+            f"{name}: MongoDB {detail} (limit={seconds:g}s). "
+            "Check MongoDB availability and the source_day index/query plan. "
+            "No existing records were deleted; interrupted writes may be partial and can be resumed."
+        ) from exc
+
+
+def _read(collection, query, seconds, progress, name, skip=0, limit=0, ordered=False):
+    with _operation(name, seconds, progress):
+        cursor = collection.find(query)
+        try:
+            if ordered:
+                cursor = cursor.sort("_id", 1)
+            cursor = cursor.skip(skip).limit(limit).max_time_ms(max(1, int(seconds * 1000)))
+            yield from cursor
+        finally:
+            cursor.close()
+
+
+def build_artificial_day(db, dry_run=True, *, operation_timeout=60, progress=None):
+    if not 0 < operation_timeout <= 3600:
+        raise ValueError("operation_timeout must be between 0 and 3600 seconds")
     collection = db.security_data
     plan = []
     for index in range(DAY_COUNT):
         day = (START + timedelta(days=index)).isoformat()
+        with _operation(f"Capacity {index + 1}/{DAY_COUNT}: {day}", operation_timeout, progress):
+            available = collection.count_documents(
+                source_query(day), limit=(index + 1) * BLOCK_SIZE,
+                maxTimeMS=max(1, int(operation_timeout * 1000)))
+        if available == 0:
+            raise ValueError(f"No eligible raw data in siem_db.security_data for source_day={day}; nothing written.")
+        if progress:
+            progress(f"{day}: eligible found (capped)={available:,}; required={(index + 1) * BLOCK_SIZE:,}")
         plan.append({"source_day": day, "skip": index * BLOCK_SIZE,
-                     "take": BLOCK_SIZE,
-                     "available": collection.count_documents(source_query(day))})
+                     "take": BLOCK_SIZE, "available": available,
+                     "count_capped_at": (index + 1) * BLOCK_SIZE})
     shortages = [row for row in plan if row["available"] < row["skip"] + row["take"]]
     if shortages:
         raise ValueError(f"Insufficient raw source data: {shortages}")
@@ -69,8 +109,9 @@ def build_artificial_day(db, dry_run=True):
     with TemporaryFile() as spool:
         for row in plan:
             count = 0
-            cursor = (collection.find(source_query(row["source_day"]))
-                      .sort("_id", 1).skip(row["skip"]).limit(row["take"]))
+            cursor = _read(collection, source_query(row["source_day"]), operation_timeout,
+                           progress, f"Select {row['source_day']} (skip={row['skip']:,}, take={row['take']:,})",
+                           skip=row["skip"], limit=row["take"], ordered=True)
             for position, original in enumerate(cursor):
                 record = deepcopy(original)
                 original_id = record["_id"]
@@ -91,6 +132,8 @@ def build_artificial_day(db, dry_run=True):
                 }
                 spool.write(BSON.encode(record))
                 count += 1
+                if progress and count % BATCH_SIZE == 0:
+                    progress(f"Selected {row['source_day']}: {count:,}/{row['take']:,}")
             if count != row["take"]:
                 raise ValueError("Source selection changed; no copies were written.")
 
@@ -98,7 +141,8 @@ def build_artificial_day(db, dry_run=True):
         # records are preserved; incompatible copies stop the operation.
         for batch in _batches(spool):
             wanted = {record["_id"]: record for record in batch}
-            for saved in collection.find({"_id": {"$in": list(wanted)}}):
+            for saved in _read(collection, {"_id": {"$in": list(wanted)}},
+                               operation_timeout, progress, "Check existing copies"):
                 if (not isinstance(saved.get("artificial_day"), dict)
                         or _content(saved) != _content(wanted[saved["_id"]])):
                     raise ValueError(f"Conflicting existing copy: {saved['_id']}; nothing written.")
@@ -117,11 +161,14 @@ def build_artificial_day(db, dry_run=True):
                                    ("version", "original_id", "original_source_day",
                                     "source_rank", "original_digest")}}
                     operations.append(UpdateOne(selector, {"$setOnInsert": record}, upsert=True))
-                inserted += collection.bulk_write(operations, ordered=True).upserted_count
+                with _operation(f"Write batch: {inserted:,} new records acknowledged so far",
+                                operation_timeout, progress):
+                    inserted += collection.bulk_write(operations, ordered=True).upserted_count
             verified = 0
             for batch in _batches(spool):
                 wanted = {record["_id"]: record for record in batch}
-                for saved in collection.find({"_id": {"$in": list(wanted)}}):
+                for saved in _read(collection, {"_id": {"$in": list(wanted)}},
+                                   operation_timeout, progress, f"Verify copies: {verified:,}/{expected:,}"):
                     if _content(saved) != _content(wanted[saved["_id"]]):
                         raise ValueError("A copied record changed during verification.")
                     verified += 1
@@ -139,13 +186,51 @@ def build_normal_day(db, dry_run=True):
     return build_artificial_day(db, dry_run=dry_run)
 
 
-if __name__ == "__main__":
+def main(argv=None):
     import argparse
     import json
-    from pymongo import MongoClient
+    import math
+    import sys
+    from datetime import datetime
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--write", action="store_true", help="Write copies (default: inspect only)")
-    args = parser.parse_args()
-    with MongoClient("mongodb://localhost:27017", serverSelectionTimeoutMS=5000) as client:
-        print(json.dumps(build_artificial_day(client["siem_db"], dry_run=not args.write), indent=2))
+    parser.add_argument("--timeout-seconds", type=float, default=60,
+                        help="Time limit for each database stage, in seconds (default: 60)")
+    args = parser.parse_args(argv)
+    if not math.isfinite(args.timeout_seconds) or not 0 < args.timeout_seconds <= 3600:
+        parser.error("--timeout-seconds must be between 0 and 3600")
+
+    stage = "Connect to localhost:27017 / siem_db"
+
+    def progress(message):
+        nonlocal stage
+        stage = message
+        print(f"[{datetime.now().isoformat(timespec='seconds')}] {message}", file=sys.stderr, flush=True)
+
+    try:
+        progress(f"Mode: {'WRITE' if args.write else 'DRY RUN (no writes)'}; "
+                 f"database stage limit={args.timeout_seconds:g}s")
+        with MongoClient("mongodb://localhost:27017", serverSelectionTimeoutMS=5000,
+                         connectTimeoutMS=5000, socketTimeoutMS=max(1, int(args.timeout_seconds * 1000)),
+                         retryReads=False, retryWrites=False) as client:
+            with _operation("Ping MongoDB", args.timeout_seconds, progress):
+                client.admin.command("ping")
+            result = build_artificial_day(client["siem_db"], dry_run=not args.write,
+                                          operation_timeout=args.timeout_seconds, progress=progress)
+        print(json.dumps(result, indent=2), flush=True)
+        return 0
+    except KeyboardInterrupt:
+        print(f"ERROR: Interrupted during {stage}. Existing records were preserved; "
+              "writes may be partial. Rerun to resume safely.", file=sys.stderr, flush=True)
+        return 130
+    except Exception as exc:
+        print(f"ERROR during {stage}: {type(exc).__name__}: {exc}", file=sys.stderr, flush=True)
+        if args.write:
+            print("No rollback/deletion was performed. If writing had started, copies may be partial; "
+                  "rerun after resolving the error to resume.", file=sys.stderr, flush=True)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

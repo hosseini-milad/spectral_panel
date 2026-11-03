@@ -1,10 +1,12 @@
 """Run: python -m unittest initial.test_artificial_day (requires mongomock)."""
 from datetime import timedelta
+import io
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
 import mongomock
+from pymongo.errors import ExecutionTimeout, NetworkTimeout
 
 from initial import artificialDay as module
 
@@ -146,6 +148,57 @@ class ArtificialDayTests(unittest.TestCase):
                    self.raw.find({'source_day': module.TARGET})]
         self.assertIn(1, origins)
         self.assertIn('1', origins)
+
+    def test_empty_day_fails_without_writes(self):
+        self.raw.delete_many({'source_day': '2026-06-21'})
+        with self.assertRaisesRegex(ValueError, 'No eligible raw data.*2026-06-21'):
+            self.run_build(write=True)
+        self.collection.bulk_write.assert_not_called()
+
+    def test_count_timeout_identifies_stage_and_prevents_writes(self):
+        self.collection.count_documents.side_effect = ExecutionTimeout('too slow')
+        with self.assertRaisesRegex(RuntimeError, 'Capacity 1/10: 2026-06-21.*time limit exceeded'):
+            self.run_build(write=True)
+        self.collection.bulk_write.assert_not_called()
+
+    def test_cursor_network_timeout_identifies_day(self):
+        self.collection.find.side_effect = NetworkTimeout('socket wait')
+        with self.assertRaisesRegex(RuntimeError, 'Select 2026-06-21.*time limit exceeded'):
+            self.run_build(write=True)
+        self.collection.bulk_write.assert_not_called()
+
+    def test_count_is_bounded_and_progress_is_reported(self):
+        progress = Mock()
+        module.build_artificial_day(self.db, operation_timeout=7, progress=progress)
+        calls = self.collection.count_documents.call_args_list
+        self.assertEqual([c.kwargs['limit'] for c in calls], list(range(2, 21, 2)))
+        self.assertTrue(all(c.kwargs['maxTimeMS'] == 7000 for c in calls))
+        messages = [c.args[0] for c in progress.call_args_list]
+        self.assertTrue(any('Capacity 1/10' in text for text in messages))
+        self.assertTrue(any('Select 2026-06-30' in text for text in messages))
+
+    def test_cli_failure_and_interrupt_return_nonzero_without_traceback(self):
+        for error, code, text in ((ExecutionTimeout('slow'), 1, 'Ping MongoDB'),
+                                  (KeyboardInterrupt(), 130, 'Interrupted'),
+                                  (RuntimeError('unexpected'), 1, 'unexpected')):
+            with self.subTest(error=type(error).__name__):
+                output = io.StringIO()
+                with patch.object(module, 'MongoClient') as client, patch('sys.stderr', output):
+                    client.return_value.__enter__.return_value.admin.command.side_effect = error
+                    self.assertEqual(module.main([]), code)
+                self.assertIn(text, output.getvalue())
+                self.assertNotIn('Traceback', output.getvalue())
+
+    def test_cli_no_data_reports_failure_and_does_not_write(self):
+        output = io.StringIO()
+        with patch.object(module, 'MongoClient') as client, patch('sys.stderr', output):
+            client.return_value.__enter__.return_value.__getitem__.return_value = self.db
+            self.raw.delete_many({})
+            self.assertEqual(module.main(['--write', '--timeout-seconds', '3']), 1)
+            self.assertFalse(client.call_args.kwargs['retryReads'])
+            self.assertEqual(client.call_args.kwargs['socketTimeoutMS'], 3000)
+        self.assertIn('No eligible raw data', output.getvalue())
+        self.collection.bulk_write.assert_not_called()
 
 
 if __name__ == '__main__':
