@@ -111,9 +111,17 @@ overview:
 - `selected_policy_overview.png/svg`, `<day>_score_audit.png/svg`: baseline
   comparison, label-conditional score distributions and ROC/PR curves.
 - A full live/replayed run also exports `feature_explanations.csv`: the masked
-  feature with largest feature-to-spectral error reduction per valid node,
+  feature with largest feature-to-graph error reduction for `feature_graph_gap`,
+  or feature-to-spectral reduction for the other policies, per valid node,
   targets/predictions in transformed space. This is a reconstruction diagnostic,
   not causal attribution. Scalar CSV alone cannot recover feature causes.
+
+For a replay-only entry point with the graph disagreement policy fixed, use
+`evaluate_feature_graph_gap`. It requires a complete reference bundle, validates
+its status/checksums, reuses its lineage field, and exposes no training epochs,
+policy switching or new alpha setting. `--check-only` validates files only and
+does not query MongoDB source data or establish graph readiness. Full commands
+and prerequisites are in `FEATURE_GRAPH_GAP_ACTIONS_FA.txt` at the repository root.
 
 Days 21 and 22 have now been inspected during method development. Results on
 them are **retrospective development evidence**, not an untouched final test.

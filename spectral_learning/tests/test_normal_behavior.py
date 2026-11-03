@@ -1,4 +1,5 @@
 import copy
+import csv
 import io
 import json
 import tempfile
@@ -75,16 +76,24 @@ class NormalBehaviorTests(unittest.TestCase):
         normal_id = self.graphs['2026-06-20'][0].lineage[0]['original_id']
         copied_id = self.graphs['2026-06-21'][0].lineage[0]['original_id']
         self.db.security_data.update_one({'_id': copied_id}, {'$set': {'original_id': normal_id}})
-        result = self.run_pipeline()
+        result = self.run_pipeline(score_policy='feature_graph_gap')
         folder = Path(result['paths']['directory'])
         manifest = json.loads((folder / 'manifest.json').read_text())
         self.assertEqual(manifest['status'], 'complete')
         self.assertTrue(manifest['fixed_model_verified'])
         self.assertEqual(manifest['reference_basis'], 'user_declared_label_normal_mixed_day_artificial_reference')
         self.assertEqual(len(manifest['metrics']), 18)
-        self.assertEqual(manifest['behavior_scoring']['selected_policy'], 'joint_spectral_gap')
+        self.assertEqual(manifest['behavior_scoring']['selected_policy'], 'feature_graph_gap')
         self.assertTrue((folder / 'score_analysis' / 'feature_explanations.csv').exists())
         self.assertTrue((folder / 'score_analysis' / 'selected_policy_overview.png').exists())
+        with (folder / 'score_analysis' / 'feature_explanations.csv').open(encoding='utf-8-sig') as stream:
+            explanation = next(csv.DictReader(stream))
+        self.assertEqual(explanation['comparison_model'], 'graph')
+        self.assertAlmostEqual(float(explanation['graph_squared_error']),
+                               (float(explanation['graph_prediction']) - float(explanation['target'])) ** 2, places=5)
+        with patch('spectral_learning.services.normal_behavior.get_db', side_effect=AssertionError('Check-only must not query MongoDB')):
+            call_command('evaluate_feature_graph_gap', day='2026-06-23', reference_bundle=str(folder),
+                         check_only=True, stdout=io.StringIO())
         self.assertEqual(next(row for row in manifest['coverage'] if row['day'] == '2026-06-21')['removed_nodes'], 1)
         normal_test = [r for r in manifest['metrics'] if r['split'] == 'test']
         self.assertEqual(len(normal_test), 3)

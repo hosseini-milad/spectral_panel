@@ -291,8 +291,11 @@ def write_normal_reports(folder, manifest, prepared, models, scaler, calibration
         residuals.extend(np.column_stack([r['node_error'] for r in results]))
         common_valid.extend(np.logical_and.reduce([r['node_error_mask'] for r in results]))
         feature_error = (results[0]['reconstruction'] - chunk.values) ** 2
+        graph_error = (results[1]['reconstruction'] - chunk.values) ** 2
         spectral_error = (results[2]['reconstruction'] - chunk.values) ** 2
-        relief = np.where(chunk.fixed_hidden, feature_error-spectral_error, -np.inf)
+        comparison = 'graph' if manifest.get('selected_score_policy') == 'feature_graph_gap' else 'spectral'
+        comparison_error = graph_error if comparison == 'graph' else spectral_error
+        relief = np.where(chunk.fixed_hidden, feature_error-comparison_error, -np.inf)
         for i, node_id in enumerate(graph.node_ids):
             meta = dict(day=graph.day, graph_key=graph.key, split=chunk.split,
                         node_id=str(node_id), raw_record_id=str(graph.lineage[i]['original_id']),
@@ -300,11 +303,13 @@ def write_normal_reports(folder, manifest, prepared, models, scaler, calibration
             metadata.append(meta)
             if chunk.fixed_hidden[i].any():
                 column = int(np.argmax(relief[i]))
-                explanations.append(dict(**meta, feature=FEATURES[column],
+                explanations.append(dict(**meta, feature=FEATURES[column], comparison_model=comparison,
                     target=float(chunk.values[i, column]), feature_prediction=float(results[0]['reconstruction'][i, column]),
+                    graph_prediction=float(results[1]['reconstruction'][i, column]),
                     spectral_prediction=float(results[2]['reconstruction'][i, column]),
-                    feature_squared_error=float(feature_error[i, column]), spectral_squared_error=float(spectral_error[i, column]),
-                    definition='Largest feature-to-spectral error reduction among this node masked targets; transformed feature space, not causal attribution'))
+                    feature_squared_error=float(feature_error[i, column]), graph_squared_error=float(graph_error[i, column]),
+                    spectral_squared_error=float(spectral_error[i, column]),
+                    definition=f'Largest feature-to-{comparison} error reduction among this node masked targets; transformed feature space, not causal attribution'))
     dataset = ScoreDataset(metadata, np.asarray(residuals), np.asarray(common_valid, dtype=bool))
     alphas = (manifest['alpha'], *[a for a in (.05, .1) if a > manifest['alpha']])
     score_paths, score_state = write_score_analysis(folder / 'score_analysis', dataset, manifest['normal_day'],
@@ -312,8 +317,9 @@ def write_normal_reports(folder, manifest, prepared, models, scaler, calibration
         source=dict(normal_behavior_run_id=manifest['run_id']))
     manifest['behavior_scoring'] = score_state
     write_csv(folder / 'score_analysis' / 'feature_explanations.csv', explanations,
-              fields=['day', 'graph_key', 'split', 'node_id', 'raw_record_id', 'raw_label', 'feature', 'target',
-                      'feature_prediction', 'spectral_prediction', 'feature_squared_error', 'spectral_squared_error', 'definition'])
+              fields=['day', 'graph_key', 'split', 'node_id', 'raw_record_id', 'raw_label', 'feature', 'comparison_model', 'target',
+                      'feature_prediction', 'graph_prediction', 'spectral_prediction', 'feature_squared_error',
+                      'graph_squared_error', 'spectral_squared_error', 'definition'])
     return dict(directory=str(folder), manifest=str(folder / 'manifest.json'),
                 metrics=str(folder / 'evaluation_metrics.csv'), scores=str(folder / 'node_scores.csv'),
                 schematic=str(folder / 'normal_behavior_schematic.png'), overview=str(folder / 'evaluation_overview.png'),

@@ -174,8 +174,11 @@ python -u manage.py analyze_behavior_scores --scores "document/autoencoder/layer
 ۹-۱. آماده‌سازی روز 23، فقط اگر گراف‌ها و مولفه‌ها هنوز آماده نیستند: پردازش لایهٔ اول دادهٔ خام موجود را کامل می‌کند.
 python -u manage.py hyper-general-action --source-file clustered-day-2026-06-23
 
-۹-۲. ارزیابی روز 23 با مدل ثابت: مدل مرجع موجود روز 20 را بارگذاری می‌کند و بدون آموزش روی روز 23، امتیاز، هشدار و گزارش می‌سازد.
-python -u manage.py learn_normal_behavior --normal-day 2026-06-20 --evaluate-days 2026-06-23 --reference-bundle "document/autoencoder/layer1/2026-06-20/whole-day/normal_behavior/runs/96b02943c11e42038f20f12172f477e9" --score-policy feature_graph_gap
+۹-۲. بررسی فایل‌های مدل پیش از ارزیابی: اکشن اختصاصی فقط bundle و checksumها را بررسی می‌کند؛ آماده‌بودن داده و گراف روز آزمون را تأیید نمی‌کند.
+python -u manage.py evaluate_feature_graph_gap --day 2026-06-23 --reference-bundle "document/autoencoder/layer1/2026-06-20/whole-day/normal_behavior/runs/96b02943c11e42038f20f12172f477e9" --check-only
+
+۹-۳. ارزیابی روز 23 با مدل ثابت: اکشن اختصاصی، مدل مرجع و سیاست feature_graph_gap را بارگذاری و بدون آموزش تازه گزارش می‌سازد.
+python -u manage.py evaluate_feature_graph_gap --day 2026-06-23 --reference-bundle "document/autoencoder/layer1/2026-06-20/whole-day/normal_behavior/runs/96b02943c11e42038f20f12172f477e9"
 
 نکتهٔ مدل: برای این آزمون ثابت، آموزش مستقل train_layer1_autoencoder روی روز 23 لازم نیست و جای ارزیابی با bundle مرجع را نمی‌گیرد.
 نکتهٔ دامنه: گزارش جدید فقط چانک‌ها و رکوردهای واقعاً موجود و باقی‌مانده پس از کنترل هم‌پوشانی را پوشش می‌دهد؛ کامل‌بودن روز فرض نمی‌شود.
