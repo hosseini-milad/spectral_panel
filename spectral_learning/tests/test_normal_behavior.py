@@ -82,6 +82,9 @@ class NormalBehaviorTests(unittest.TestCase):
         self.assertTrue(manifest['fixed_model_verified'])
         self.assertEqual(manifest['reference_basis'], 'user_declared_label_normal_mixed_day_artificial_reference')
         self.assertEqual(len(manifest['metrics']), 18)
+        self.assertEqual(manifest['behavior_scoring']['selected_policy'], 'joint_spectral_gap')
+        self.assertTrue((folder / 'score_analysis' / 'feature_explanations.csv').exists())
+        self.assertTrue((folder / 'score_analysis' / 'selected_policy_overview.png').exists())
         self.assertEqual(next(row for row in manifest['coverage'] if row['day'] == '2026-06-21')['removed_nodes'], 1)
         normal_test = [r for r in manifest['metrics'] if r['split'] == 'test']
         self.assertEqual(len(normal_test), 3)

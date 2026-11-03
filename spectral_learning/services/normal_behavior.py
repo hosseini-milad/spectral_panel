@@ -161,7 +161,11 @@ def _valid_scores(model, prepared, split):
 
 def run_normal_behavior(normal_day, evaluate_days, *, epochs=60, hidden=64, latent=16,
                         layers=2, max_pairs=2048, alpha=.01, seed=17,
-                        origin_field='artificial_day.original_id', reference_bundle=None, progress=None):
+                        origin_field='artificial_day.original_id', reference_bundle=None, progress=None,
+                        score_policy='joint_spectral_gap'):
+    from .behavior_scoring import POLICIES
+    if score_policy not in POLICIES:
+        raise ValueError('Unknown score policy')
     for day in [normal_day, *evaluate_days]:
         if date.fromisoformat(day).isoformat() != day:
             raise ValueError('Use YYYY-MM-DD dates')
@@ -255,6 +259,7 @@ def run_normal_behavior(normal_day, evaluate_days, *, epochs=60, hidden=64, late
         _verify_raw_sources(db, source_graphs, lineage_signatures)
         from .normal_behavior_reports import write_normal_reports
         manifest = dict(version='normal_behavior_v1', run_id=run_id, normal_day=normal_day,
+                        selected_score_policy=score_policy,
                         evaluate_days=evaluate_days, alpha=alpha, thresholds=thresholds,
                         parameters=parameters, source_signatures=signatures,
                         lineage_signatures=lineage_signatures,
@@ -282,7 +287,8 @@ def run_normal_behavior(normal_day, evaluate_days, *, epochs=60, hidden=64, late
         manifest.update(status='complete', paths=paths)
         dump_json(folder / 'manifest.json', manifest)
         dump_json(folder / 'run_status.json', dict(status, status='complete'))
-        return dict(run_id=run_id, paths=paths)
+        return dict(run_id=run_id, paths=paths, score_policy=score_policy, alpha=alpha,
+                    behavior_metrics=manifest['behavior_scoring']['metrics'])
     except Exception as exc:
         dump_json(folder / 'run_status.json', dict(status, status='failed', error=str(exc)))
         if progress:

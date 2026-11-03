@@ -280,7 +280,42 @@ def write_normal_reports(folder, manifest, prepared, models, scaler, calibration
               'Raw label0/label1 fractions are conditional on existing tags; not verified attack accuracy.',
               '', *manifest['limits']]
     (folder / 'evaluation.txt').write_text('\n'.join(lines) + '\n', encoding='utf-8')
+    # Additional policies retain original reconstruction metrics instead of silently
+    # relabeling them. All fitting/calibration still uses only the normal reference.
+    from .behavior_scoring import ScoreDataset
+    from .behavior_score_reports import write_score_analysis
+    metadata, residuals, common_valid, explanations = [], [], [], []
+    for chunk in prepared:
+        graph = chunk.graph
+        results = [models[variant]['results'][graph.key] for variant in VARIANTS]
+        residuals.extend(np.column_stack([r['node_error'] for r in results]))
+        common_valid.extend(np.logical_and.reduce([r['node_error_mask'] for r in results]))
+        feature_error = (results[0]['reconstruction'] - chunk.values) ** 2
+        spectral_error = (results[2]['reconstruction'] - chunk.values) ** 2
+        relief = np.where(chunk.fixed_hidden, feature_error-spectral_error, -np.inf)
+        for i, node_id in enumerate(graph.node_ids):
+            meta = dict(day=graph.day, graph_key=graph.key, split=chunk.split,
+                        node_id=str(node_id), raw_record_id=str(graph.lineage[i]['original_id']),
+                        raw_label='' if labels[graph.key][i] is None else str(labels[graph.key][i]))
+            metadata.append(meta)
+            if chunk.fixed_hidden[i].any():
+                column = int(np.argmax(relief[i]))
+                explanations.append(dict(**meta, feature=FEATURES[column],
+                    target=float(chunk.values[i, column]), feature_prediction=float(results[0]['reconstruction'][i, column]),
+                    spectral_prediction=float(results[2]['reconstruction'][i, column]),
+                    feature_squared_error=float(feature_error[i, column]), spectral_squared_error=float(spectral_error[i, column]),
+                    definition='Largest feature-to-spectral error reduction among this node masked targets; transformed feature space, not causal attribution'))
+    dataset = ScoreDataset(metadata, np.asarray(residuals), np.asarray(common_valid, dtype=bool))
+    alphas = (manifest['alpha'], *[a for a in (.05, .1) if a > manifest['alpha']])
+    score_paths, score_state = write_score_analysis(folder / 'score_analysis', dataset, manifest['normal_day'],
+        alphas=alphas, selected_policy=manifest.get('selected_score_policy', 'joint_spectral_gap'),
+        source=dict(normal_behavior_run_id=manifest['run_id']))
+    manifest['behavior_scoring'] = score_state
+    write_csv(folder / 'score_analysis' / 'feature_explanations.csv', explanations,
+              fields=['day', 'graph_key', 'split', 'node_id', 'raw_record_id', 'raw_label', 'feature', 'target',
+                      'feature_prediction', 'spectral_prediction', 'feature_squared_error', 'spectral_squared_error', 'definition'])
     return dict(directory=str(folder), manifest=str(folder / 'manifest.json'),
                 metrics=str(folder / 'evaluation_metrics.csv'), scores=str(folder / 'node_scores.csv'),
                 schematic=str(folder / 'normal_behavior_schematic.png'), overview=str(folder / 'evaluation_overview.png'),
-                text=str(folder / 'evaluation.txt'))
+                text=str(folder / 'evaluation.txt'), behavior_metrics=score_paths['metrics'],
+                behavior_scores=score_paths['scores'], behavior_cases=score_paths['cases'])

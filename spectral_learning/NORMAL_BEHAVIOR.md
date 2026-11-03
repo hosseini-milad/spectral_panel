@@ -54,6 +54,74 @@ The saved normal reference must still match the current data. Use its original
 alpha; training options are irrelevant to loaded weights. Every invocation
 creates a new retained report directory; existing runs are not overwritten.
 
+## Improved score policies and offline analysis
+
+The original reconstruction scores and reports remain available. Additional
+policies compare the feature-only residual with the graph/spectral residual on
+the **same** masked targets. A large stabilized log-ratio is model disagreement;
+it is not proof that an event is malicious. Numerical floors are 1% of the normal
+training residual median for each variant, with minimum 1e-8. Floors never use
+external examples or labels.
+
+The new default `--score-policy joint_spectral_gap` combines unusual spectral
+reconstruction error and unusual feature/spectral disagreement. Each channel is
+ranked against normal **training** scores, the larger tail surprise is taken,
+and this joint score is separately calibrated on normal **calibration** rows.
+This controls the nominal joint tail instead of simply OR-ing two 1% alarms.
+It does not guarantee retaining every old alert under the same nominal budget.
+The gap-only option is `--score-policy feature_spectral_gap`; a graph-only
+disagreement alternative is `--score-policy feature_graph_gap`.
+
+Replay of an older bundle keeps its model weights, scaler and original residual
+thresholds. The new gap/joint policies fit their scales and calibrate their own
+thresholds using only the same normal reference outputs. No model retraining or
+external-label threshold selection is performed.
+
+Saved node scores can be analyzed without MongoDB queries or retraining:
+
+```sh
+python -u manage.py analyze_behavior_scores --scores node_scores.zip --normal-day 2026-06-20
+```
+
+The command also accepts plain `node_scores.csv`. It aligns model rows by
+day/graph/node identity, rejects duplicate/missing variants, and compares nominal
+normal-calibration tail levels .01/.05/.1. To inspect a different budget:
+
+```sh
+python -u manage.py analyze_behavior_scores --scores node_scores.zip --normal-day 2026-06-20 --alphas 0.01 0.02 0.05 --score-policy joint_spectral_gap
+```
+
+Outputs appear under `document/autoencoder/layer1/<normal-day>/whole-day/score_analysis/runs/<id>/`.
+Inside a full `learn_normal_behavior` run they appear in its `score_analysis/`
+subdirectory. Read these **new policy reports**, not just the original residual
+overview:
+
+- `score_policy_metrics.csv`: node-score ROC-AUC/AP (distinct from relation
+  ROC-AUC), label1 recall/precision, label0 false-alert fraction, and retained,
+  lost and newly added original alerts. Thresholds are fitted on normal data;
+  external labels only evaluate outcomes.
+- `selected_node_scores.csv`: selected policy, scores and original/gap alert
+  flags. These are **candidate records**, not anomalous Meta-components.
+- `alert_case_samples.csv`: up to 100 high-score cases per day/category for
+  label1 alerts, label0 alerts, missed label1 and unflagged label0, with raw IDs
+  and all three residuals. These are ranked examples, not a random sample.
+- `score_analysis.json/txt`, `score_channels.npz`: fitted numerical floors,
+  normal-training reference distributions, thresholds, policy definitions,
+  input checksum when analyzed offline, and aligned numeric scores.
+- `selected_policy_overview.png/svg`, `<day>_score_audit.png/svg`: baseline
+  comparison, label-conditional score distributions and ROC/PR curves.
+- A full live/replayed run also exports `feature_explanations.csv`: the masked
+  feature with largest feature-to-spectral error reduction per valid node,
+  targets/predictions in transformed space. This is a reconstruction diagnostic,
+  not causal attribution. Scalar CSV alone cannot recover feature causes.
+
+Days 21 and 22 have now been inspected during method development. Results on
+them are **retrospective development evidence**, not an untouched final test.
+Validate the chosen policy on another independent day before claiming improved
+generalization. Exact-event lineage checks remain necessary; this scorer does
+not solve missing provenance or near-duplicate leakage. The neighborhood-decoder
+training objective remains a separate future ablation; weights are preserved.
+
 ## Evaluation and artifacts
 
 Reports are under:
