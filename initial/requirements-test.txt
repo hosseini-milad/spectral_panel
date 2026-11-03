@@ -1,0 +1,2 @@
+# Optional dependencies for python -m unittest initial.test_artificial_day
+mongomock==4.3.0
