@@ -1,5 +1,6 @@
 """Run: python -m unittest initial.test_artificial_day (requires mongomock)."""
 from datetime import timedelta
+from contextlib import contextmanager
 import io
 from types import SimpleNamespace
 import unittest
@@ -58,8 +59,7 @@ class ArtificialDayTests(unittest.TestCase):
         with patch.object(module, 'BLOCK_SIZE', 20_000):
             with self.assertRaisesRegex(ValueError, 'Insufficient raw'):
                 self.run_build()
-        self.assertEqual(self.collection.count_documents.call_args_list[-1].args[0]['source_day'],
-                         '2026-06-30')
+        self.collection.count_documents.assert_not_called()
 
     def test_write_preserves_raw_labels_timestamps_and_existing_destination(self):
         self.raw.insert_one({'_id': 'existing', 'source_day': module.TARGET, 'label': 9})
@@ -111,7 +111,7 @@ class ArtificialDayTests(unittest.TestCase):
             return original_find(query)
 
         self.collection.find.side_effect = changed
-        with self.assertRaisesRegex(ValueError, 'Source selection changed'):
+        with self.assertRaisesRegex(ValueError, 'Insufficient raw data.*2026-06-30'):
             self.run_build(write=True)
         self.collection.bulk_write.assert_not_called()
 
@@ -152,15 +152,14 @@ class ArtificialDayTests(unittest.TestCase):
 
     def test_empty_day_fails_without_writes(self):
         self.raw.delete_many({'source_day': '2026-06-21'})
-        with self.assertRaisesRegex(ValueError, 'No eligible raw data.*2026-06-21'):
+        with self.assertRaisesRegex(ValueError, 'Insufficient raw data.*2026-06-21'):
             self.run_build(write=True)
         self.collection.bulk_write.assert_not_called()
 
-    def test_count_timeout_identifies_stage_and_prevents_writes(self):
-        self.collection.count_documents.side_effect = ExecutionTimeout('too slow')
-        with self.assertRaisesRegex(RuntimeError, 'Capacity 1/10: 2026-06-21.*time limit exceeded'):
-            self.run_build(write=True)
-        self.collection.bulk_write.assert_not_called()
+    def test_no_count_queries_are_needed(self):
+        self.collection.count_documents.side_effect = ExecutionTimeout('count is forbidden')
+        self.assertEqual(self.run_build(write=True)['inserted'], 20)
+        self.collection.count_documents.assert_not_called()
 
     def test_cursor_network_timeout_identifies_day(self):
         self.collection.find.side_effect = NetworkTimeout('socket wait')
@@ -168,14 +167,12 @@ class ArtificialDayTests(unittest.TestCase):
             self.run_build(write=True)
         self.collection.bulk_write.assert_not_called()
 
-    def test_count_is_bounded_and_progress_is_reported(self):
+    def test_progress_reports_selection_and_completed_validation(self):
         progress = Mock()
         module.build_artificial_day(self.db, operation_timeout=7, progress=progress)
-        calls = self.collection.count_documents.call_args_list
-        self.assertEqual([c.kwargs['limit'] for c in calls], list(range(2, 21, 2)))
-        self.assertTrue(all(c.kwargs['maxTimeMS'] == 7000 for c in calls))
+        self.collection.count_documents.assert_not_called()
         messages = [c.args[0] for c in progress.call_args_list]
-        self.assertTrue(any('Capacity 1/10' in text for text in messages))
+        self.assertTrue(any('Validated 2026-06-21' in text for text in messages))
         self.assertTrue(any('Select 2026-06-30' in text for text in messages))
 
     def test_cli_failure_and_interrupt_return_nonzero_without_traceback(self):
@@ -198,7 +195,7 @@ class ArtificialDayTests(unittest.TestCase):
             self.assertEqual(module.main(['--write', '--timeout-seconds', '3']), 1)
             self.assertFalse(client.call_args.kwargs['retryReads'])
             self.assertEqual(client.call_args.kwargs['socketTimeoutMS'], 600000)
-        self.assertIn('No eligible raw data', output.getvalue())
+        self.assertIn('Insufficient raw data', output.getvalue())
         self.collection.bulk_write.assert_not_called()
 
     def test_write_creates_missing_source_index(self):
@@ -216,11 +213,10 @@ class ArtificialDayTests(unittest.TestCase):
         self.collection.bulk_write.assert_not_called()
         self.assertEqual(list(self.raw.find()), before)
 
-    def test_existing_index_reused_and_counts_hinted(self):
+    def test_existing_index_reused_without_counting(self):
         self.run_build()
         self.collection.create_index.assert_not_called()
-        self.assertTrue(all(c.kwargs['hint'] == module.SOURCE_INDEX for c in
-                            self.collection.count_documents.call_args_list))
+        self.collection.count_documents.assert_not_called()
 
     def test_prepare_index_only_never_copies_records(self):
         self.raw.drop_indexes()
@@ -230,6 +226,50 @@ class ArtificialDayTests(unittest.TestCase):
             self.assertEqual(module.main(['--prepare-index']), 0)
         self.collection.create_index.assert_called_once()
         self.collection.bulk_write.assert_not_called()
+
+    def test_paged_selection_keeps_skip_order_and_opens_a_new_deadline_per_page(self):
+        active = 0
+        deadlines = []
+
+        @contextmanager
+        def request_timeout(seconds):
+            nonlocal active
+            active += 1
+            deadlines.append(seconds)
+            try:
+                yield
+            finally:
+                active -= 1
+
+        day = '2026-06-30'
+        expected = list(self.raw.find(module.source_query(day)).sort('_id', 1).skip(3).limit(7))
+        with patch.object(module, 'READ_BATCH_SIZE', 3), patch.object(module, 'timeout', request_timeout):
+            selected = []
+            for record in module._read(self.collection, module.source_query(day), 1, None,
+                                       'test page', skip=3, limit=7, ordered=True):
+                # File processing outside MongoDB must not consume a database deadline.
+                self.assertEqual(active, 0)
+                selected.append(record)
+        self.assertEqual(selected, expected)
+        self.assertEqual(deadlines, [1, 1, 1])
+        calls = self.collection.find.call_args_list
+        self.assertEqual(len(calls), 3)
+        self.assertNotIn('_id', calls[0].args[0])
+        self.assertEqual(calls[1].args[0]['_id'], {'$gt': expected[2]['_id']})
+        self.assertEqual(calls[2].args[0]['_id'], {'$gt': expected[5]['_id']})
+
+    def test_timeout_on_a_later_page_still_prevents_any_writes(self):
+        find = self.raw.find
+        def fail_next_page(query):
+            if query.get('source_day') == '2026-06-30' and '_id' in query:
+                raise NetworkTimeout('later page stalled')
+            return find(query)
+        self.collection.find.side_effect = fail_next_page
+        with patch.object(module, 'READ_BATCH_SIZE', 1):
+            with self.assertRaisesRegex(RuntimeError, 'Select 2026-06-30.*time limit exceeded'):
+                self.run_build(write=True)
+        self.collection.bulk_write.assert_not_called()
+        self.assertEqual(self.raw.count_documents({'source_day': module.TARGET}), 0)
 
 
 if __name__ == '__main__':

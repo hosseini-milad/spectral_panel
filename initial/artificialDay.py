@@ -21,6 +21,7 @@ TARGET = "2026-06-20"
 DAY_COUNT = 10
 BLOCK_SIZE = 20_000
 BATCH_SIZE = 1000
+READ_BATCH_SIZE = 256
 VERSION = "mixed-raw-v1"
 SOURCE_INDEX = [("source_day", 1), ("_id", 1)]
 
@@ -90,15 +91,38 @@ def _operation(name, seconds, progress):
 
 
 def _read(collection, query, seconds, progress, name, skip=0, limit=0, ordered=False):
-    with _operation(name, seconds, progress):
-        cursor = collection.find(query)
-        try:
-            if ordered:
-                cursor = cursor.hint(SOURCE_INDEX).sort("_id", 1)
-            cursor = cursor.skip(skip).limit(limit).max_time_ms(max(1, int(seconds * 1000)))
-            yield from cursor
-        finally:
-            cursor.close()
+    if not ordered:
+        with _operation(name, seconds, progress):
+            with collection.find(query).max_time_ms(max(1, int(seconds * 1000))) as cursor:
+                records = list(cursor)
+        yield from records
+        return
+
+    # New indexed query per page: the timeout cannot accumulate across the
+    # entire day's cursor, BSON encoding or temporary-file I/O.
+    remaining = limit
+    last_id = None
+    first = True
+    while remaining:
+        page_query = query if first else {**query, "_id": {"$gt": last_id}}
+        take = min(READ_BATCH_SIZE, remaining)
+        with _operation(f"{name}: fetch up to {take} records ({limit - remaining:,}/{limit:,})",
+                        seconds, progress):
+            cursor = (collection.find(page_query).hint(SOURCE_INDEX).sort("_id", 1)
+                      .skip(skip if first else 0).limit(take)
+                      .max_time_ms(max(1, int(seconds * 1000))))
+            try:
+                records = list(cursor)
+            finally:
+                cursor.close()
+        if not records:
+            return
+        last_id = records[-1]["_id"]
+        remaining -= len(records)
+        yield from records
+        if len(records) < take:
+            return
+        first = False
 
 
 def build_artificial_day(db, dry_run=True, *, operation_timeout=60, progress=None,
@@ -107,23 +131,9 @@ def build_artificial_day(db, dry_run=True, *, operation_timeout=60, progress=Non
         raise ValueError("operation_timeout must be between 0 and 3600 seconds")
     collection = db.security_data
     ensure_source_index(collection, allow_create=not dry_run, seconds=index_timeout, progress=progress)
-    plan = []
-    for index in range(DAY_COUNT):
-        day = (START + timedelta(days=index)).isoformat()
-        with _operation(f"Capacity {index + 1}/{DAY_COUNT}: {day}", operation_timeout, progress):
-            available = collection.count_documents(
-                source_query(day), limit=(index + 1) * BLOCK_SIZE,
-                hint=SOURCE_INDEX, maxTimeMS=max(1, int(operation_timeout * 1000)))
-        if available == 0:
-            raise ValueError(f"No eligible raw data in siem_db.security_data for source_day={day}; nothing written.")
-        if progress:
-            progress(f"{day}: eligible found (capped)={available:,}; required={(index + 1) * BLOCK_SIZE:,}")
-        plan.append({"source_day": day, "skip": index * BLOCK_SIZE,
-                     "take": BLOCK_SIZE, "available": available,
-                     "count_capped_at": (index + 1) * BLOCK_SIZE})
-    shortages = [row for row in plan if row["available"] < row["skip"] + row["take"]]
-    if shortages:
-        raise ValueError(f"Insufficient raw source data: {shortages}")
+    plan = [{"source_day": (START + timedelta(days=index)).isoformat(),
+             "skip": index * BLOCK_SIZE, "take": BLOCK_SIZE}
+            for index in range(DAY_COUNT)]
 
     run_id = uuid4().hex
     expected = DAY_COUNT * BLOCK_SIZE
@@ -159,7 +169,14 @@ def build_artificial_day(db, dry_run=True, *, operation_timeout=60, progress=Non
                 if progress and count % BATCH_SIZE == 0:
                     progress(f"Selected {row['source_day']}: {count:,}/{row['take']:,}")
             if count != row["take"]:
-                raise ValueError("Source selection changed; no copies were written.")
+                raise ValueError(
+                    f"Insufficient raw data for {row['source_day']}: "
+                    f"skip={row['skip']:,}, required={row['take']:,}, selected={count:,}. "
+                    "The day is missing, insufficient, or changed during selection; nothing written."
+                )
+            row["selected"] = count
+            if progress:
+                progress(f"Validated {row['source_day']}: {count:,}/{row['take']:,}; no copies written yet")
 
         # Validate every existing ID before any writes. Original/unknown target
         # records are preserved; incompatible copies stop the operation.
@@ -222,7 +239,7 @@ def main(argv=None):
     mode.add_argument("--write", action="store_true", help="Prepare source index if needed, then write copies")
     mode.add_argument("--prepare-index", action="store_true", help="Create source index only; do not copy records")
     parser.add_argument("--timeout-seconds", type=float, default=60,
-                        help="Time limit for each database stage, in seconds (default: 60)")
+                        help="Time limit per database request/page, not per whole day (default: 60)")
     parser.add_argument("--index-timeout-seconds", type=float, default=600,
                         help="Separate time limit for one-time index preparation (default: 600)")
     args = parser.parse_args(argv)
@@ -232,15 +249,18 @@ def main(argv=None):
         parser.error("--index-timeout-seconds must be between 0 and 3600")
 
     stage = "Connect to localhost:27017 / siem_db"
+    writes_started = False
 
     def progress(message):
-        nonlocal stage
+        nonlocal stage, writes_started
         stage = message
+        if message.startswith("Write batch:"):
+            writes_started = True
         print(f"[{datetime.now().isoformat(timespec='seconds')}] {message}", file=sys.stderr, flush=True)
 
     try:
         progress(f"Mode: {'PREPARE INDEX ONLY' if args.prepare_index else 'WRITE' if args.write else 'DRY RUN (no writes)'}; "
-                 f"database stage limit={args.timeout_seconds:g}s")
+                 f"database request/page limit={args.timeout_seconds:g}s")
         with MongoClient("mongodb://localhost:27017", serverSelectionTimeoutMS=5000,
                          connectTimeoutMS=5000,
                          socketTimeoutMS=max(1, int(max(args.timeout_seconds, args.index_timeout_seconds) * 1000)),
@@ -258,14 +278,16 @@ def main(argv=None):
         print(json.dumps(result, indent=2), flush=True)
         return 0
     except KeyboardInterrupt:
-        print(f"ERROR: Interrupted during {stage}. Existing records were preserved; "
-              "writes may be partial. Rerun to resume safely.", file=sys.stderr, flush=True)
+        status = ("Copies may be partial; rerun to resume safely." if writes_started
+                  else "No copies were written by this run.")
+        print(f"ERROR: Interrupted during {stage}. {status}", file=sys.stderr, flush=True)
         return 130
     except Exception as exc:
         print(f"ERROR during {stage}: {type(exc).__name__}: {exc}", file=sys.stderr, flush=True)
         if args.write:
-            print("No rollback/deletion was performed. If writing had started, copies may be partial; "
-                  "rerun after resolving the error to resume.", file=sys.stderr, flush=True)
+            print("Copies may be partial; no deletion was performed. Rerun to resume."
+                  if writes_started else "No copies were written by this run; validation did not finish.",
+                  file=sys.stderr, flush=True)
         return 1
 
 
