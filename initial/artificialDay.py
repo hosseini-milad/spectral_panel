@@ -22,6 +22,28 @@ DAY_COUNT = 10
 BLOCK_SIZE = 20_000
 BATCH_SIZE = 1000
 VERSION = "mixed-raw-v1"
+SOURCE_INDEX = [("source_day", 1), ("_id", 1)]
+
+
+def ensure_source_index(collection, *, allow_create, seconds=600, progress=None):
+    """Use an ordered day index; never create indexes during a dry run."""
+    with _operation("Check source_day/_id index", seconds, progress):
+        for index in collection.list_indexes():
+            if (list(index["key"].items()) == SOURCE_INDEX
+                    and not index.get("partialFilterExpression")
+                    and not index.get("sparse") and not index.get("hidden")
+                    and index.get("collation", {}).get("locale", "simple") == "simple"):
+                if progress:
+                    progress(f"Using source index: {index['name']}")
+                return
+    if not allow_create:
+        raise ValueError("Missing compound index {source_day: 1, _id: 1}. "
+                         "Run python -u initial/artificialDay.py --prepare-index once, "
+                         "then repeat the dry run. No raw records were written.")
+    with _operation("Create source_day/_id index (one-time database index build)", seconds, progress):
+        collection.create_index(SOURCE_INDEX, maxTimeMS=max(1, int(seconds * 1000)))
+    if progress:
+        progress("Source index ready; no raw records changed by index preparation")
 
 
 def source_query(day):
@@ -72,24 +94,26 @@ def _read(collection, query, seconds, progress, name, skip=0, limit=0, ordered=F
         cursor = collection.find(query)
         try:
             if ordered:
-                cursor = cursor.sort("_id", 1)
+                cursor = cursor.hint(SOURCE_INDEX).sort("_id", 1)
             cursor = cursor.skip(skip).limit(limit).max_time_ms(max(1, int(seconds * 1000)))
             yield from cursor
         finally:
             cursor.close()
 
 
-def build_artificial_day(db, dry_run=True, *, operation_timeout=60, progress=None):
+def build_artificial_day(db, dry_run=True, *, operation_timeout=60, progress=None,
+                         index_timeout=600):
     if not 0 < operation_timeout <= 3600:
         raise ValueError("operation_timeout must be between 0 and 3600 seconds")
     collection = db.security_data
+    ensure_source_index(collection, allow_create=not dry_run, seconds=index_timeout, progress=progress)
     plan = []
     for index in range(DAY_COUNT):
         day = (START + timedelta(days=index)).isoformat()
         with _operation(f"Capacity {index + 1}/{DAY_COUNT}: {day}", operation_timeout, progress):
             available = collection.count_documents(
                 source_query(day), limit=(index + 1) * BLOCK_SIZE,
-                maxTimeMS=max(1, int(operation_timeout * 1000)))
+                hint=SOURCE_INDEX, maxTimeMS=max(1, int(operation_timeout * 1000)))
         if available == 0:
             raise ValueError(f"No eligible raw data in siem_db.security_data for source_day={day}; nothing written.")
         if progress:
@@ -194,12 +218,18 @@ def main(argv=None):
     from datetime import datetime
 
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--write", action="store_true", help="Write copies (default: inspect only)")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--write", action="store_true", help="Prepare source index if needed, then write copies")
+    mode.add_argument("--prepare-index", action="store_true", help="Create source index only; do not copy records")
     parser.add_argument("--timeout-seconds", type=float, default=60,
                         help="Time limit for each database stage, in seconds (default: 60)")
+    parser.add_argument("--index-timeout-seconds", type=float, default=600,
+                        help="Separate time limit for one-time index preparation (default: 600)")
     args = parser.parse_args(argv)
     if not math.isfinite(args.timeout_seconds) or not 0 < args.timeout_seconds <= 3600:
         parser.error("--timeout-seconds must be between 0 and 3600")
+    if not math.isfinite(args.index_timeout_seconds) or not 0 < args.index_timeout_seconds <= 3600:
+        parser.error("--index-timeout-seconds must be between 0 and 3600")
 
     stage = "Connect to localhost:27017 / siem_db"
 
@@ -209,15 +239,22 @@ def main(argv=None):
         print(f"[{datetime.now().isoformat(timespec='seconds')}] {message}", file=sys.stderr, flush=True)
 
     try:
-        progress(f"Mode: {'WRITE' if args.write else 'DRY RUN (no writes)'}; "
+        progress(f"Mode: {'PREPARE INDEX ONLY' if args.prepare_index else 'WRITE' if args.write else 'DRY RUN (no writes)'}; "
                  f"database stage limit={args.timeout_seconds:g}s")
         with MongoClient("mongodb://localhost:27017", serverSelectionTimeoutMS=5000,
-                         connectTimeoutMS=5000, socketTimeoutMS=max(1, int(args.timeout_seconds * 1000)),
+                         connectTimeoutMS=5000,
+                         socketTimeoutMS=max(1, int(max(args.timeout_seconds, args.index_timeout_seconds) * 1000)),
                          retryReads=False, retryWrites=False) as client:
             with _operation("Ping MongoDB", args.timeout_seconds, progress):
                 client.admin.command("ping")
-            result = build_artificial_day(client["siem_db"], dry_run=not args.write,
-                                          operation_timeout=args.timeout_seconds, progress=progress)
+            if args.prepare_index:
+                ensure_source_index(client["siem_db"].security_data, allow_create=True,
+                                    seconds=args.index_timeout_seconds, progress=progress)
+                result = {"index_ready": True, "inserted": 0}
+            else:
+                result = build_artificial_day(client["siem_db"], dry_run=not args.write,
+                                              operation_timeout=args.timeout_seconds, progress=progress,
+                                              index_timeout=args.index_timeout_seconds)
         print(json.dumps(result, indent=2), flush=True)
         return 0
     except KeyboardInterrupt:

@@ -14,6 +14,7 @@ from initial import artificialDay as module
 class ArtificialDayTests(unittest.TestCase):
     def setUp(self):
         self.raw = mongomock.MongoClient().siem_db.security_data
+        self.raw.create_index(module.SOURCE_INDEX)
         self.collection = Mock(wraps=self.raw)
         self.collection.bulk_write.side_effect = self.bulk_write
         self.db = SimpleNamespace(security_data=self.collection)
@@ -196,8 +197,38 @@ class ArtificialDayTests(unittest.TestCase):
             self.raw.delete_many({})
             self.assertEqual(module.main(['--write', '--timeout-seconds', '3']), 1)
             self.assertFalse(client.call_args.kwargs['retryReads'])
-            self.assertEqual(client.call_args.kwargs['socketTimeoutMS'], 3000)
+            self.assertEqual(client.call_args.kwargs['socketTimeoutMS'], 600000)
         self.assertIn('No eligible raw data', output.getvalue())
+        self.collection.bulk_write.assert_not_called()
+
+    def test_write_creates_missing_source_index(self):
+        self.raw.drop_indexes()
+        self.assertEqual(self.run_build(write=True)['inserted'], 20)
+        self.collection.create_index.assert_called_once()
+        self.assertIn(module.SOURCE_INDEX, [list(i['key'].items()) for i in self.raw.list_indexes()])
+
+    def test_dry_run_missing_index_fails_without_mutating_database(self):
+        self.raw.drop_indexes()
+        before = list(self.raw.find())
+        with self.assertRaisesRegex(ValueError, 'Missing compound index.*prepare-index'):
+            self.run_build()
+        self.collection.create_index.assert_not_called()
+        self.collection.bulk_write.assert_not_called()
+        self.assertEqual(list(self.raw.find()), before)
+
+    def test_existing_index_reused_and_counts_hinted(self):
+        self.run_build()
+        self.collection.create_index.assert_not_called()
+        self.assertTrue(all(c.kwargs['hint'] == module.SOURCE_INDEX for c in
+                            self.collection.count_documents.call_args_list))
+
+    def test_prepare_index_only_never_copies_records(self):
+        self.raw.drop_indexes()
+        with patch.object(module, 'MongoClient') as client, patch('sys.stderr', io.StringIO()), \
+                patch('sys.stdout', io.StringIO()):
+            client.return_value.__enter__.return_value.__getitem__.return_value = self.db
+            self.assertEqual(module.main(['--prepare-index']), 0)
+        self.collection.create_index.assert_called_once()
         self.collection.bulk_write.assert_not_called()
 
 
