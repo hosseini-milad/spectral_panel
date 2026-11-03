@@ -124,7 +124,8 @@ class PreparedChunk:
     positive_weights: np.ndarray
 
 
-def prepare_chunks(graphs, splits, scaler, *, seed=17, max_pairs=2048, progress=None):
+def prepare_chunks(graphs, splits, scaler, *, seed=17, max_pairs=2048, progress=None,
+                   required_splits=('train', 'validation', 'test')):
     prepared = []
     for i, graph in enumerate(graphs):
         if progress:
@@ -136,7 +137,7 @@ def prepare_chunks(graphs, splits, scaler, *, seed=17, max_pairs=2048, progress=
         fixed_hidden = feature_corruption(mask, np.random.default_rng(seed + 1000 + i))
         prepared.append(PreparedChunk(graph, splits[graph.key], original, spectral, values, mask,
                                       fixed_hidden, pairs, labels, weights))
-    for split in ('train', 'validation', 'test'):
+    for split in required_splits:
         if not any(chunk.mask.any() for chunk in prepared if chunk.split == split):
             raise ValueError(f'No observed active features in {split} chunk set')
     return prepared
