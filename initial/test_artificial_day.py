@@ -271,6 +271,56 @@ class ArtificialDayTests(unittest.TestCase):
         self.collection.bulk_write.assert_not_called()
         self.assertEqual(self.raw.count_documents({'source_day': module.TARGET}), 0)
 
+    def test_manual_day_offset_limit_and_independent_runs(self):
+        result = module.build_artificial_day(self.db, dry_run=False,
+                                            day='2026-06-22', offset=2, limit=2)
+        self.assertEqual(result['expected_total'], 2)
+        self.assertEqual(result['inserted'], 2)
+        copies = list(self.raw.find({'source_day': module.TARGET}))
+        self.assertEqual({r['artificial_day']['original_id'] for r in copies}, {102, 103})
+        self.assertEqual({r['artificial_day']['original_source_day'] for r in copies}, {'2026-06-22'})
+        self.assertEqual({r['artificial_day']['source_rank'] for r in copies}, {2, 3})
+        result = module.build_artificial_day(self.db, dry_run=False,
+                                            day='2026-06-22', offset=2, limit=2)
+        self.assertEqual(result['inserted'], 0)
+        module.build_artificial_day(self.db, dry_run=False, day='2026-06-23', offset=4, limit=2)
+        self.assertEqual(self.raw.count_documents({'source_day': module.TARGET}), 4)
+
+    def test_manual_selection_dry_run_and_shortage_never_write(self):
+        result = module.build_artificial_day(self.db, day='2026-06-22', offset=1, limit=2)
+        self.assertEqual(result['would_insert'], 2)
+        self.assertEqual(len(result['plan']), 1)
+        with self.assertRaisesRegex(ValueError, 'Insufficient raw data.*2026-06-22'):
+            module.build_artificial_day(self.db, dry_run=False,
+                                        day='2026-06-22', offset=3, limit=2)
+        self.collection.bulk_write.assert_not_called()
+
+    def test_manual_cli_uses_requested_selection_only(self):
+        with patch.object(module, 'MongoClient') as client, patch('sys.stderr', io.StringIO()), \
+                patch('sys.stdout', io.StringIO()):
+            client.return_value.__enter__.return_value.__getitem__.return_value = self.db
+            code = module.main(['--write', '--day', '2026-06-22', '--offset', '2', '--limit', '2'])
+        self.assertEqual(code, 0)
+        self.assertEqual(self.raw.count_documents({'source_day': module.TARGET}), 2)
+        sources = [c.args[0]['source_day'] for c in self.collection.find.call_args_list
+                   if 'source_day' in c.args[0]]
+        self.assertEqual(sources, ['2026-06-22'])
+
+    def test_invalid_manual_options_fail_before_connecting(self):
+        cases = [ ['--day', '2026-06-21'], ['--offset', '0'],
+                  ['--day', '2026-02-30', '--offset', '0', '--limit', '2'],
+                  ['--day', '2026-06-21', '--offset', '-1', '--limit', '2'],
+                  ['--day', '2026-06-21', '--offset', '0', '--limit', '0'],
+                  ['--day', module.TARGET, '--offset', '0', '--limit', '2'],
+                  ['--prepare-index', '--day', '2026-06-21', '--offset', '0', '--limit', '2'] ]
+        for argv in cases:
+            with self.subTest(argv=argv), patch.object(module, 'MongoClient') as client, \
+                    patch('sys.stderr', io.StringIO()):
+                with self.assertRaises(SystemExit) as error:
+                    module.main(argv)
+                self.assertEqual(error.exception.code, 2)
+                client.assert_not_called()
+
 
 if __name__ == '__main__':
     unittest.main()

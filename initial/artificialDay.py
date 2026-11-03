@@ -125,18 +125,38 @@ def _read(collection, query, seconds, progress, name, skip=0, limit=0, ordered=F
         first = False
 
 
+def _selection_plan(day=None, offset=None, limit=None):
+    if day is None and offset is None and limit is None:
+        return [{"source_day": (START + timedelta(days=index)).isoformat(),
+                 "skip": index * BLOCK_SIZE, "take": BLOCK_SIZE}
+                for index in range(DAY_COUNT)]
+    if day is None or offset is None or limit is None:
+        raise ValueError("Provide --day, --offset and --limit together")
+    try:
+        parsed = date.fromisoformat(day)
+    except (ValueError, TypeError):
+        raise ValueError("--day must be a valid date in YYYY-MM-DD format") from None
+    if parsed.isoformat() != day:
+        raise ValueError("--day must use YYYY-MM-DD format")
+    if day == TARGET:
+        raise ValueError("Source --day cannot equal destination day " + TARGET)
+    if not isinstance(offset, int) or offset < 0:
+        raise ValueError("--offset must be a nonnegative integer")
+    if not isinstance(limit, int) or limit <= 0:
+        raise ValueError("--limit must be a positive integer")
+    return [{"source_day": day, "skip": offset, "take": limit}]
+
+
 def build_artificial_day(db, dry_run=True, *, operation_timeout=60, progress=None,
-                         index_timeout=600):
+                         index_timeout=600, day=None, offset=None, limit=None):
     if not 0 < operation_timeout <= 3600:
         raise ValueError("operation_timeout must be between 0 and 3600 seconds")
+    plan = _selection_plan(day, offset, limit)
     collection = db.security_data
     ensure_source_index(collection, allow_create=not dry_run, seconds=index_timeout, progress=progress)
-    plan = [{"source_day": (START + timedelta(days=index)).isoformat(),
-             "skip": index * BLOCK_SIZE, "take": BLOCK_SIZE}
-            for index in range(DAY_COUNT)]
 
     run_id = uuid4().hex
-    expected = DAY_COUNT * BLOCK_SIZE
+    expected = sum(row["take"] for row in plan)
     inserted = 0
     existing = 0
     # Spool the complete selection before writing. Memory is bounded by a batch.
@@ -238,11 +258,20 @@ def main(argv=None):
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--write", action="store_true", help="Prepare source index if needed, then write copies")
     mode.add_argument("--prepare-index", action="store_true", help="Create source index only; do not copy records")
+    parser.add_argument("--day", help="Read only this source day (YYYY-MM-DD); destination remains 2026-06-20")
+    parser.add_argument("--offset", type=int, help="Number of eligible records to skip in _id order")
+    parser.add_argument("--limit", type=int, help="Number of records to copy from the selected day")
     parser.add_argument("--timeout-seconds", type=float, default=60,
                         help="Time limit per database request/page, not per whole day (default: 60)")
     parser.add_argument("--index-timeout-seconds", type=float, default=600,
                         help="Separate time limit for one-time index preparation (default: 600)")
     args = parser.parse_args(argv)
+    try:
+        _selection_plan(args.day, args.offset, args.limit)
+    except ValueError as exc:
+        parser.error(str(exc))
+    if args.prepare_index and args.day is not None:
+        parser.error("--prepare-index cannot be combined with --day/--offset/--limit")
     if not math.isfinite(args.timeout_seconds) or not 0 < args.timeout_seconds <= 3600:
         parser.error("--timeout-seconds must be between 0 and 3600")
     if not math.isfinite(args.index_timeout_seconds) or not 0 < args.index_timeout_seconds <= 3600:
@@ -274,7 +303,8 @@ def main(argv=None):
             else:
                 result = build_artificial_day(client["siem_db"], dry_run=not args.write,
                                               operation_timeout=args.timeout_seconds, progress=progress,
-                                              index_timeout=args.index_timeout_seconds)
+                                              index_timeout=args.index_timeout_seconds,
+                                              day=args.day, offset=args.offset, limit=args.limit)
         print(json.dumps(result, indent=2), flush=True)
         return 0
     except KeyboardInterrupt:
