@@ -199,3 +199,7 @@ Tests execute actual PyTorch training and reporting on synthetic fixtures with
 an in-memory MongoDB substitute. They validate frozen replay, calibration,
 leakage filtering, file artifacts and failed-source checks; they do not validate
 the user's real population or production MongoDB performance.
+
+### Neighborhood-objective ablation (experimental)
+
+`train_neighborhood_representation` compares fresh, paired graph/spectral cores with and without auxiliary encoder gradients for full-source log-degree and neighbor feature mean/std reconstruction. It reuses the verified reference feature scaler and chunk split, fits neighborhood normalization only on normal train chunks, and selects both arms using the original validation objective. Existing reference checkpoints and MongoDB collections remain unchanged. See [Persian actions and output contract](../NEIGHBORHOOD_REPRESENTATION_ACTIONS_FA.txt). Outputs live under the reference day's `neighborhood_learning/runs`; they are experimental checkpoints, not normal-behavior bundles or calibrated alerts.
