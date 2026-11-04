@@ -40,6 +40,13 @@ class HierarchyBehaviorMathTests(unittest.TestCase):
         self.assertEqual(before,after)
         self.assertTrue(all(s['status']=='excluded' for s in score_group(mixed,after,'r').values()))
 
+    def test_entire_new_normal_days_have_group_roles_without_chunk_mixing(self):
+        for role,expected in [('normal_group_train','train'),('normal_group_calibration','calibration'),('normal_group_test','test')]:
+            result=_group('2026-06-15','meta_component','m',[member(1,role),member(2,role)],2,{},'2026-06-20')
+            self.assertEqual(result['split'],expected)
+        with self.assertRaisesRegex(ValueError,'conflicting'):
+            _group('2026-06-15','meta_component','m',[member(1,'normal_group_train'),member(2,'normal_group_test')],2,{},'2026-06-20')
+
     def test_sparse_or_unseen_size_strata_remain_uncalibrated(self):
         g=_group('2026-06-20','component','x',[member(1)],1,{},'2026-06-20')
         states=reference_models([g],.01,2)

@@ -167,9 +167,13 @@ def _group(day, kind, entity_id, members, children, structure, normal_day):
         if any(r not in ('train', 'validation', 'calibration', 'test') for r in roles):
             raise ValueError('Invalid normal reference split')
     else:
-        if roles != ['additional_day']:
-            raise ValueError('External hierarchy includes reference-role candidates')
-        split = 'additional_day'
+        day_roles = {'normal_group_train':'train', 'normal_group_calibration':'calibration', 'normal_group_test':'test'}
+        if len(roles)==1 and roles[0] in day_roles:
+            split=day_roles[roles[0]]
+        elif roles == ['additional_day']:
+            split='additional_day'
+        else:
+            raise ValueError('External hierarchy includes conflicting reference-role candidates')
     descriptors, mean, variance, detail = describe(members, kind=kind, size=len(members), children=children, structure=structure)
     return dict(day=day, entity_type=kind, entity_id=entity_id, split=split, member_splits=roles,
         candidate_count=len(members), child_component_count=children, stratum=size_stratum(len(members), children, kind),
@@ -289,7 +293,11 @@ def read_signal_bundle(folder):
             entity = row['entity']; day = entity['source_day']; node = entity['node_id']
             if node in by_day[day] or not entity['component_id']:
                 raise ValueError('Duplicate candidate or missing component identity')
-            if row['split'] != 'additional_day':
+            normal_roles=manifest['identity'].get('normal_group_day_roles', {})
+            if day in normal_roles:
+                if row['split'] != normal_roles[day]:
+                    raise ValueError('Whole-day normal role differs from pinned plan')
+            elif row['split'] != 'additional_day':
                 normal_days.add(day)
             if row['source_signature'] != manifest['identity']['source_signatures'][day][entity['graph_key']]:
                 raise ValueError('Signal graph provenance mismatch')
@@ -466,6 +474,7 @@ def run_hierarchy_behavior(signal_bundle, *, alpha=.01, min_train=5, write=False
             exceeds_tail=signal['exceeds_tail']) for r in records for family,signal in r['signals'].items()]
         write_csv(folder/'group_scores.csv',scores)
         contract=dict(version=VERSION,reference_id=reference_id,normal_day=normal_day,
+            normal_group_day_roles=parent['identity'].get('normal_group_day_roles', {}),
             methods='pooled_existing_node_latents_raw_member_residuals_and_observed_structure; no_new_encoder',
             representation_features='latent_mean_then_latent_population_std',
             member_behavior_features=[f'{c}_{s}' for c in CHANNELS for s in ('raw_mean','raw_p90','valid_fraction')],

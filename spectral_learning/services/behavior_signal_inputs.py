@@ -136,9 +136,14 @@ def persist_inputs(db, run, jsonl):
 
 
 def build_behavior_signal_inputs(experiment_bundle, *, seed=17, alpha=.01,
-                                 reference_bundle=None, write=False, progress=None):
+                                 reference_bundle=None, write=False, progress=None, normal_day_roles=None):
     if not 0 < alpha < 1:
         raise ValueError('Require 0 < alpha < 1')
+    roles = dict(normal_day_roles or {})
+    from datetime import date
+    for day, role in roles.items():
+        if date.fromisoformat(day).isoformat() != day or role not in ('normal_group_train', 'normal_group_calibration', 'normal_group_test'):
+            raise ValueError('Invalid normal group day/role')
     source_folder = Path(experiment_bundle).resolve()
     manifest_path = source_folder / 'manifest.json'; status_path = source_folder / 'run_status.json'
     experiment_manifest_sha = _sha(manifest_path)
@@ -160,6 +165,9 @@ def build_behavior_signal_inputs(experiment_bundle, *, seed=17, alpha=.01,
     reference = Path(reference_bundle or experiment['reference_bundle']).resolve()
     _, scaler, parameters, _, _, saved = load_reference_bundle(reference)
     reference_manifest_sha = _sha(reference / 'manifest.json')
+    historical_days = set(saved['source_signatures']) | set(experiment['source_signatures'])
+    if set(roles) & historical_days:
+        raise ValueError('New normal days must not reuse a historical training/evaluation day')
     if saved['run_id'] != experiment['reference_run_id'] or saved['checkpoint_sha256'] != experiment['reference_checkpoint_sha256'] or saved['reference_arrays_sha256'] != experiment['reference_arrays_sha256']:
         raise ValueError('Normal reference differs from the experiment')
     with np.load(scaler_path, allow_pickle=False) as arrays:
@@ -183,6 +191,9 @@ def build_behavior_signal_inputs(experiment_bundle, *, seed=17, alpha=.01,
         feature_scaler=artifact['scaler_checksum'], seed=seed, alpha=alpha,
         calibration_policy='normal_calibration_only_connected_isolated_v1',
         source_signatures=experiment['source_signatures'], lineage_signatures=experiment['lineage_signatures'])
+    if roles:
+        identity['normal_group_day_roles'] = roles
+        identity['calibration_policy'] += '_whole_day_group_roles_v1'
     run_id = fingerprint(identity); calibration_id = fingerprint(dict(run_id=run_id, role='calibration'))
     folder = document_directory('autoencoder', layer=1, day=saved['normal_day']) / 'signal_inputs' / 'runs' / uuid.uuid4().hex
     folder.mkdir(parents=True); dump_json(folder / 'run_status.json', dict(status='building', run_id=run_id))
@@ -204,10 +215,54 @@ def build_behavior_signal_inputs(experiment_bundle, *, seed=17, alpha=.01,
             signatures = {r['graph_key']: r['raw_signature'] for r in lineage}
             if signatures != experiment['lineage_signatures']:
                 raise ValueError('Raw source/provenance changed since experiment')
+            if roles:
+                # Protect every previously used candidate, including historical
+                # evaluation days not emitted by the current experiment.
+                from .normal_behavior import record_identity
+                from ingestion.services.graph.components import load_node_documents
+                protected = list(source); protected_signatures = {}
+                for day in sorted(historical_days - set(experiment['source_signatures'])):
+                    history = sorted(load_raw_chunks(day), key=lambda g: g.chunk)
+                    if not history:
+                        raise ValueError(f'Missing historical source {day}; cannot audit unseen data')
+                    protected.extend(history)
+                    protected_signatures[day] = _signatures(history)
+                for graph in protected:
+                    ids = [str(r['original_id']) for r in graph.lineage]
+                    docs = load_node_documents(db, ids, 'security_data')
+                    if len(docs) != len(ids):
+                        raise ValueError('Missing historical raw records for unseen-data audit')
+                    for doc in docs.values():
+                        seen.update(record_identity(doc, saved['origin_id_field']))
+                history_rows = []
+                for day in sorted(protected_signatures):
+                    history = [g for g in protected if g.day == day]
+                    _, rows, _ = audit_graph_identities(db, history, set(), 'historical_protected',
+                        reject=False, origin_field=saved['origin_id_field'], progress=progress)
+                    history_rows.extend(rows)
+                for day, role in sorted(roles.items()):
+                    if progress:
+                        progress(f'[SIGNAL INPUTS] New normal day {day}: {role}')
+                    raw = sorted(load_raw_chunks(day), key=lambda g: g.chunk)
+                    if not raw:
+                        raise ValueError(f'No graphs for new normal day {day}')
+                    retained, rows, labels = audit_graph_identities(db, raw, seen, role,
+                        reject=True, origin_field=saved['origin_id_field'], progress=progress)
+                    if any(label != 0 for values in labels.values() for label in values):
+                        raise ValueError(f'{day}: all new normal reference candidates must have raw label=0')
+                    graphs.extend(retained); source.extend(raw); lineage.extend(rows)
+                identity['source_signatures'] = dict(experiment['source_signatures'],
+                    **{day: _signatures([g for g in source if g.day == day]) for day in roles})
+                identity['lineage_signatures'] = {r['graph_key']: r['raw_signature'] for r in lineage}
+                identity['protected_historical_signatures'] = protected_signatures
+                identity['protected_historical_lineage'] = {r['graph_key']: r['raw_signature'] for r in history_rows}
+                run_id = fingerprint(identity); calibration_id = fingerprint(dict(run_id=run_id, role='calibration'))
+                dump_json(folder / 'run_status.json', dict(status='building', run_id=run_id))
+                signatures = identity['lineage_signatures']
             split = reference_splits([g for g in graphs if g.day == saved['normal_day']])
             if split != saved['chunk_splits']:
                 raise ValueError('Reference splits changed')
-            chunks = prepare_chunks(graphs, {g.key: split.get(g.key, 'additional_day') for g in graphs},
+            chunks = prepare_chunks(graphs, {g.key: split.get(g.key, roles.get(g.day, 'additional_day')) for g in graphs},
                 scaler, seed=seed, max_pairs=parameters['max_pairs'], progress=progress,
                 required_splits=('train', 'validation', 'calibration', 'test'))
             frozen = {k: v.clone() for k, v in model.state_dict().items()}
@@ -239,7 +294,7 @@ def build_behavior_signal_inputs(experiment_bundle, *, seed=17, alpha=.01,
                             raw_source=dict(collection='security_data', record_id=str(arrays['raw_record_ids'][i]),
                                 canonical_event_id=None, canonical_origin_status='not_verified',
                                 event_time=None, event_time_status='not_loaded_no_temporal_signal'),
-                            source_signature=experiment['source_signatures'][chunk.graph.day][chunk.graph.key],
+                            source_signature=identity['source_signatures'][chunk.graph.day][chunk.graph.key],
                             raw_lineage_signature=signatures[chunk.graph.key],
                             inference_graph_signature=chunk.graph.signature, model_id=artifact['checksum'],
                             reference_run_id=saved['run_id'], calibration_id=calibration_id,
@@ -264,10 +319,15 @@ def build_behavior_signal_inputs(experiment_bundle, *, seed=17, alpha=.01,
             if any(not torch.equal(v, frozen[k]) for k, v in model.state_dict().items()):
                 raise ValueError('Model changed during frozen signal replay')
             def verify():
-                for day in experiment['source_signatures']:
-                    if _signatures(load_raw_chunks(day)) != experiment['source_signatures'][day]:
+                for day in identity['source_signatures']:
+                    if _signatures(load_raw_chunks(day)) != identity['source_signatures'][day]:
                         raise ValueError('Source graph changed during export')
                 _verify_raw_sources(db, source, signatures)
+                if roles:
+                    for day, expected in protected_signatures.items():
+                        if _signatures(load_raw_chunks(day)) != expected:
+                            raise ValueError('Historical protected graph changed during export')
+                    _verify_raw_sources(db, [g for g in protected if g.day in protected_signatures], identity['protected_historical_lineage'])
                 if (_sha(manifest_path) != experiment_manifest_sha
                         or _sha(reference / 'manifest.json') != reference_manifest_sha
                         or _sha(reference / 'reference_arrays.npz') != saved['reference_arrays_sha256']):
@@ -277,7 +337,7 @@ def build_behavior_signal_inputs(experiment_bundle, *, seed=17, alpha=.01,
             verify()
             report = [dict(day=k[0], split=k[1], signal=k[2], calibration_group=k[3], **v,
                 tail_exceedance_fraction=v['tail_exceedances']/v['valid'] if v['valid'] else None,
-                interpretation='normal_heldout_tail_fraction' if k[1] == 'test' else 'diagnostic_not_false_positive_rate') for k, v in sorted(summaries.items())]
+                interpretation='normal_heldout_tail_fraction' if k[1] in ('test', 'normal_group_test') else 'diagnostic_not_false_positive_rate') for k, v in sorted(summaries.items())]
             write_csv(folder / 'signal_coverage.csv', report); write_csv(folder / 'lineage_audit.csv', lineage)
             dump_json(folder / 'input_samples.json', [r for group in samples.values() for r in group])
             contract = dict(version=VERSION, unit='candidate_flow_L1', available_signals=list(CHANNELS),
