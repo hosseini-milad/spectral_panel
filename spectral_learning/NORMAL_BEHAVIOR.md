@@ -1,5 +1,15 @@
 # Normal-reference self-supervision and frozen evaluation
 
+Current development focus is the ML core / behavior representation rather than
+optimizing label1 alert recall. Use `audit_behavior_representation` with a saved
+reference bundle for disjoint covering-mask reconstruction, latent geometry,
+node-order equivariance and component moment conservation. This audit does not
+train, fit thresholds, generate anomaly scores or promote the model. Its
+`representation_contract.json` explicitly leaves named feature weights
+unestimated and predictive uncertainty uncalibrated. See the repository-root
+`BEHAVIOR_REPRESENTATION_ACTIONS_FA.txt` for commands, artifact definitions and
+remaining ML tasks. The score workflows below are retained baselines.
+
 This workflow keeps the existing feature, graph and spectral masked autoencoders.
 It trains only on the declared normal reference (2026-06-20 by default) and
 evaluates independent retained records from other days without updating weights,
