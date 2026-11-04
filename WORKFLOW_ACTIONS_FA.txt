@@ -232,3 +232,7 @@ python -u manage.py audit_behavior_representation --reference-bundle "document/a
 محدودکردن تعداد چانک‌های hyper-general-action
 python -u manage.py hyper-general-action --source-file clustered-day-2026-06-21 --limit 10
 این دستور حداکثر۱۰چانک از۰تا۹ را اجرا می‌کند؛ اگر روز چانک کمتری داشته باشد همان تعداد موجود پردازش می‌شود. --max-chunks همچنان پشتیبانی می‌شود. برای ادامه از چانک دیگر، --start-chunk قابل ترکیب با --limit است.
+
+شروع مجدد اجباری یک روز، بدون پشتیبان
+python -u manage.py hyper-general-action --source-file clustered-day-2026-06-21 --limit 10 --force
+--force خروجی‌های مشتق‌شدهٔ تمام همان روز را بدون backup پاک می‌کند و فقط چانک‌های۰تا۹ را دوباره می‌سازد. raw حفظ می‌شود. برای ادامه بدون پاک‌سازی دوباره، --force را حذف کنید. جزئیات در RESET_PROCESSED_DAY_ACTIONS_FA.txt است.

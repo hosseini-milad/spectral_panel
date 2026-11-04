@@ -6,6 +6,8 @@ from datetime import datetime
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from mongoengine import get_db
+from django.conf import settings
+from ingestion.management.commands.reset_processed_day import reset_processed_day
 
 DAY_SOURCE_RE = re.compile(r"^clustered-day-(\d{4}-\d{2}-\d{2})$")
 
@@ -26,6 +28,7 @@ class Command(BaseCommand):
         parser.add_argument('--max-chunks', type=int, default=None, help='Optional chunk count; normally all remaining chunks run.')
         parser.add_argument('--limit', type=int, default=None, help='Maximum chunks to process, starting at --start-chunk (default 0); equivalent to --max-chunks.')
         parser.add_argument('--skip-eigen', action='store_true')
+        parser.add_argument('--force', action='store_true', help='Delete ALL derived data/reports for this day without backup, preserve raw, then rebuild only requested chunks.')
 
     def handle(self, *args, **options):
         match = DAY_SOURCE_RE.fullmatch(options['source_file'].strip())
@@ -55,6 +58,12 @@ class Command(BaseCommand):
         if start >= count:
             raise CommandError(f'start-chunk={start} is outside valid range 0..{count - 1}.')
         stop = count if limit is None else min(count, start + limit)
+        if options['force']:
+            self.stdout.write(f'[HYPER] FORCE: reset all derived data for {day} without backup; rebuild chunks {start}..{stop-1}; raw retained')
+            try:
+                reset_processed_day(db, day, settings.BASE_DIR, apply=True, report=self.stdout.write)
+            except Exception as exc:
+                raise CommandError(f'Force reset stopped before rebuilding: {exc}') from exc
         self.stdout.write(self.style.NOTICE(
             f'[HYPER] day={day}; raw_records={total:,}; chunk_size={chunk_size:,}; '
             f'total_chunks={count}; run={start}..{stop - 1}; each chunk runs all 10 layer-1 stages'

@@ -57,6 +57,22 @@ class HyperGeneralActionTests(unittest.TestCase):
         self.assertEqual([c.kwargs['source_file'] for c in self.run_chunk.call_args_list],
                          ['clustered-day-2026-06-21-chunk-5', 'clustered-day-2026-06-21-chunk-6'])
 
+    def test_force_resets_once_before_requested_chunk_dispatch(self):
+        self.db.security_data.count_documents.return_value=1000000
+        events=[]
+        with patch.object(self.module,'reset_processed_day',side_effect=lambda *a,**k:events.append('reset')) as reset:
+            self.run_chunk.side_effect=lambda *a,**k:events.append(k['source_file'])
+            self.execute(limit=2,force=True)
+        self.assertEqual(events,['reset','clustered-day-2026-06-21-chunk-0','clustered-day-2026-06-21-chunk-1'])
+        reset.assert_called_once()
+        self.assertTrue(reset.call_args.kwargs['apply'])
+
+    def test_force_reset_failure_never_dispatches_chunks(self):
+        with patch.object(self.module,'reset_processed_day',side_effect=RuntimeError('reset failed')):
+            with self.assertRaisesRegex(CommandError,'Force reset stopped'):
+                self.execute(force=True,limit=2)
+        self.run_chunk.assert_not_called()
+
     def test_failure_stops_later_chunks_and_keeps_cause(self):
         self.run_chunk.side_effect = [None, CommandError('component audit failed')]
         with self.assertRaisesRegex(CommandError, r'stopped at chunk 1.*component audit failed'):
