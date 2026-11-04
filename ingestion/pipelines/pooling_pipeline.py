@@ -1,6 +1,7 @@
 
 import math
 import time
+import uuid
 
 import numpy as np
 import networkx as nx
@@ -336,6 +337,7 @@ def run_pooling(
 
     selection_started = time.perf_counter()
 
+    spread_diagnostics = {}
     selected_nodes = select_representatives(
         score=scores,
         G=G,
@@ -344,6 +346,8 @@ def run_pooling(
         attack_ratio=attack_ratio,
         eigenvector_scores=centralities.get("eigenvector", {}),
         anomaly_scores=anomaly_scores,
+        features=features,
+        spread_diagnostics=spread_diagnostics,
     )
 
     if len(selected_nodes) != k:
@@ -355,6 +359,19 @@ def run_pooling(
         f"Selection completed: {len(selected_nodes)} representatives "
         f"in {time.perf_counter() - selection_started:.1f}s"
     )
+
+    from spectral_learning.services.spectral_reports import dump_json
+    from spectral_learning.services.spectral_inputs import fingerprint
+    spread_dir = document_directory('nominal', source_file, day=docs[0].get('source_day'), chunk=docs[0].get('chunk_index')) / 'representative_spread' / 'runs' / uuid.uuid4().hex
+    spread_dir.mkdir(parents=True)
+    spread_diagnostics.update(source_file=source_file, candidate_ids=[str(doc['_id']) for doc in docs],
+        graph_fingerprint=fingerprint(dict(nodes=[str(doc['_id']) for doc in docs],edges=edges,features=np.asarray(features,dtype=float).tolist())),
+        ratio=ratio,
+        feature_fields=feature_fields or [], persistence_status='selection_computed_not_yet_persisted',
+        label_usage='existing_label_aware_sampling_policy_preserved')
+    dump_json(spread_dir / 'representative_spread.json', spread_diagnostics)
+    log_progress(f"Graph spread changed {spread_diagnostics.get('changed', 0)} representatives; "
+                 f"feature error {spread_diagnostics.get('feature_error_before')} -> {spread_diagnostics.get('feature_error_after')}")
 
     # Create one persistent entity ID per connected component. This is the
     # same component definition/order used by evaluate_layer1_component_allocation.
@@ -451,6 +468,9 @@ def run_pooling(
 
     GraphRepresentative.objects(source_file=source_file, id__nin=representative_object_ids).delete()
     component_result = persist_components(component_metadata, docs=docs)
+    spread_diagnostics['persistence_status'] = 'complete'
+    dump_json(spread_dir / 'representative_spread.json', spread_diagnostics)
+    log_progress(f'Spread report: {spread_dir}')
     log_progress(
         f"Saved components={component_result['component_count']}; "
         f"representatives={len(representative_documents)}"

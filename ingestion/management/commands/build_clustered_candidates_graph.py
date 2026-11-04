@@ -212,6 +212,7 @@ class Command(BaseCommand):
             attack_ratio=sum(v == 1 for v in labels.values()) / max(1, len(labels)),
             eigenvector_scores=centralities.get("eigenvector", {}),
             anomaly_scores=None,
+            spread=False,  # Legacy candidate sampling retains its existing policy.
         )
         selected = list(dict.fromkeys(int(i) for i in selected))
         if len(selected) != target:

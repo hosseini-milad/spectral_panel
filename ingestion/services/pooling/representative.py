@@ -53,6 +53,7 @@ def _select_classwise(
     G,
     isolate_budget=None,
     flow_files=None,
+    initial_selected=(),
 ):
     """Select a fixed count while preserving class proportions and flow diversity.
 
@@ -88,7 +89,7 @@ def _select_classwise(
         excluded = set(excluded)
         available = [node for node in pool if node not in excluded and node in candidate_set]
         chosen = []
-        occupied = set(excluded)
+        occupied = set(excluded) | set(initial_selected)
 
         while available and len(chosen) < amount:
             sources = [node for node in occupied if node in G]
@@ -414,13 +415,18 @@ def select_representatives(
     anomaly_scores=None,
     risk_scores=None,
     flow_files=None,
+    features=None,
+    spread=True,
+    spread_diagnostics=None,
 ):
     """Select representatives with importance, rarity, risk, and flow coverage.
 
     Path A (60%): structurally important nodes, with eigenvector centrality as
     the strongest individual feature.
     Path B (40%): anomalous/rare nodes, including a bounded isolate allowance.
-    Within each path, graph distance adds a 35% diversity/coverage contribution.
+    Selection uses importance, hop distance and flow diversity; a final
+    component/class-quota-preserving geodesic pass improves coverage with a
+    non-worsening mean/std feature-distribution guard when features are given.
     """
     nodes = sorted(score, key=int)
     k = min(max(0, int(k)), len(nodes))
@@ -514,6 +520,7 @@ def select_representatives(
         G=G,
         isolate_budget=isolate_budget,
         flow_files=flow_files,
+        initial_selected=important_nodes if spread else (),
     )
 
     selected = list(dict.fromkeys(important_nodes + rare_nodes))
@@ -538,4 +545,11 @@ def select_representatives(
         max_spread_swaps=12,
     )
 
+    if spread:
+        from .spread import spread_representatives
+        selected = spread_representatives(
+            G.subgraph(nodes), selected[:k], labels=labels, priorities=importance,
+            novelty=rare_score, features=features, diagnostics=spread_diagnostics,
+            fixed_nodes=[node for node in selected[:k] if labels.get(node)==1],
+        )
     return selected[:k]
