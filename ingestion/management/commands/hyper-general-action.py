@@ -23,7 +23,8 @@ class Command(BaseCommand):
         parser.add_argument('--degree-cap', type=int, default=20)
         parser.add_argument('--ratio', type=float, default=0.10)
         parser.add_argument('--start-chunk', type=int, default=0, help='Optional first chunk; normally all chunks run automatically.')
-        parser.add_argument('--max-chunks', type=int, default=None, help='Optional limit; normally all remaining chunks run.')
+        parser.add_argument('--max-chunks', type=int, default=None, help='Optional chunk count; normally all remaining chunks run.')
+        parser.add_argument('--limit', type=int, default=None, help='Maximum chunks to process, starting at --start-chunk (default 0); equivalent to --max-chunks.')
         parser.add_argument('--skip-eigen', action='store_true')
 
     def handle(self, *args, **options):
@@ -37,11 +38,13 @@ class Command(BaseCommand):
             raise CommandError('Invalid calendar date in --source-file.') from exc
         chunk_size = options['sample_per_day']
         start = options['start_chunk']
-        limit = options['max_chunks']
+        if options['limit'] is not None and options['max_chunks'] is not None and options['limit'] != options['max_chunks']:
+            raise CommandError('--limit and --max-chunks must agree when both are provided.')
+        limit = options['limit'] if options['limit'] is not None else options['max_chunks']
         if min(chunk_size, options['batch_size'], options['neighbors'], options['degree_cap']) < 1:
             raise CommandError('Chunk size, batch size, neighbors and degree cap must be positive.')
         if start < 0 or limit is not None and limit < 1:
-            raise CommandError('--start-chunk must be >= 0 and --max-chunks must be positive.')
+            raise CommandError('--start-chunk must be >= 0 and --limit/--max-chunks must be positive.')
         if not 0 < options['ratio'] < 1 or not -1 <= options['threshold'] <= 1:
             raise CommandError('Require 0 < ratio < 1 and -1 <= threshold <= 1.')
         db = get_db()

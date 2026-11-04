@@ -45,6 +45,18 @@ class HyperGeneralActionTests(unittest.TestCase):
                            'batch_size': 500, 'skip_eigen': True}.items():
             self.assertEqual(kwargs[key], value)
 
+    def test_cli_limit_only_dispatches_first_ten_chunks_and_supports_resume(self):
+        self.db.security_data.count_documents.return_value = 1000000
+        output = io.StringIO()
+        call_command('hyper-general-action', '--source-file', 'clustered-day-2026-06-21',
+                     '--limit', '10', stdout=output)
+        self.assertEqual([c.kwargs['source_file'] for c in self.run_chunk.call_args_list],
+                         [f'clustered-day-2026-06-21-chunk-{i}' for i in range(10)])
+        self.run_chunk.reset_mock()
+        self.execute(start_chunk=5, limit=2)
+        self.assertEqual([c.kwargs['source_file'] for c in self.run_chunk.call_args_list],
+                         ['clustered-day-2026-06-21-chunk-5', 'clustered-day-2026-06-21-chunk-6'])
+
     def test_failure_stops_later_chunks_and_keeps_cause(self):
         self.run_chunk.side_effect = [None, CommandError('component audit failed')]
         with self.assertRaisesRegex(CommandError, r'stopped at chunk 1.*component audit failed'):
@@ -57,7 +69,7 @@ class HyperGeneralActionTests(unittest.TestCase):
         self.assertEqual(self.run_chunk.call_count, 2)
 
     def test_invalid_or_empty_requests_never_dispatch(self):
-        for options in ({'start_chunk': -1}, {'max_chunks': 0}, {'sample_per_day': 0},
+        for options in ({'start_chunk': -1}, {'limit': 0}, {'limit': -1}, {'limit': 2, 'max_chunks': 3}, {'max_chunks': 0}, {'sample_per_day': 0},
                         {'ratio': 1}, {'threshold': 2}, {'start_chunk': 10}):
             with self.subTest(options=options), self.assertRaises(CommandError):
                 self.execute(**options)

@@ -228,3 +228,7 @@ python -u manage.py audit_behavior_representation --reference-bundle "document/a
 python -u manage.py audit_behavior_representation --reference-bundle "document/autoencoder/layer1/2026-06-20/whole-day/normal_behavior/runs/96b02943c11e42038f20f12172f477e9" --days 2026-06-23 --mask-passes 5
 
 راهنمای اختصاصی: BEHAVIOR_REPRESENTATION_ACTIONS_FA.txt تعریف متریک‌ها، محدودیت‌ها و فایل‌های لازم برای گام بعدی را توضیح می‌دهد.
+
+محدودکردن تعداد چانک‌های hyper-general-action
+python -u manage.py hyper-general-action --source-file clustered-day-2026-06-21 --limit 10
+این دستور حداکثر۱۰چانک از۰تا۹ را اجرا می‌کند؛ اگر روز چانک کمتری داشته باشد همان تعداد موجود پردازش می‌شود. --max-chunks همچنان پشتیبانی می‌شود. برای ادامه از چانک دیگر، --start-chunk قابل ترکیب با --limit است.
