@@ -7,12 +7,16 @@ import { navigation } from "./config/navigation";
 import { WorkspacePage } from "./pages/WorkspacePage";
 import { DaysPage } from "./pages/DaysPage";
 import { VisualizationsPage } from "./pages/VisualizationsPage";
+import { OverviewPage } from "./pages/OverviewPage";
 
 export function App() {
   const { pathname } = useLocation();
   const page = navigation.find((item) => item.path === pathname);
   const [menuOpen, setMenuOpen] = useState(false);
   const drawer = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [pathname]);
   useEffect(() => {
     document.title = `${page?.label ?? "صفحه پیدا نشد"} | اسپکترال`;
   }, [page]);
@@ -87,7 +91,9 @@ export function App() {
           menuOpen={menuOpen}
           onMenu={() => setMenuOpen(true)}
         />
-        {pathname === "/visualizations" ? (
+        {pathname === "/" ? (
+          <OverviewPage />
+        ) : pathname === "/visualizations" ? (
           <VisualizationsPage />
         ) : pathname === "/days" ? (
           <DaysPage />

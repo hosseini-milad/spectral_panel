@@ -2,6 +2,25 @@
   max-width: 1660px;
   padding-top: 30px;
 }
+.invalid-day-link {
+  padding: 40px 24px;
+  text-align: center;
+  background: var(--surface);
+  color: var(--text-secondary);
+  border-color: var(--line);
+}
+.invalid-day-link > svg {
+  color: var(--warning-text);
+  margin-bottom: 12px;
+}
+.invalid-day-link h2 {
+  margin-bottom: 10px;
+  color: var(--text);
+}
+.invalid-day-link p {
+  margin-bottom: 20px;
+  font-size: 12px;
+}
 .days-page-heading {
   margin-bottom: 22px;
 }

@@ -1,4 +1,6 @@
 import { Fragment, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { dayDetailsPath, isISODate } from "../lib/dayNavigation";
 import {
   CalendarDays,
   Database,
@@ -25,11 +27,66 @@ import { DayDetail } from "../components/days/DayDetail";
 import "./days.css";
 
 export function DaysPage() {
-  const [selectedDate, setSelectedDate] = useState(mockSnapshotDate);
-  const [expanded, setExpanded] = useState<string | null>(mockSnapshotDate);
+  const [params, setParams] = useSearchParams();
+  const requested = params.get("day");
+  if (requested !== null && !isISODate(requested)) {
+    return (
+      <main id="main-content" className="main-content days-page" tabIndex={-1}>
+        <div className="page-heading">
+          <div>
+            <h1>روزها و چانک‌ها</h1>
+            <p className="page-description">انتخاب روز از آدرس صفحه</p>
+          </div>
+        </div>
+        <div className="days-card invalid-day-link" role="alert">
+          <CalendarSearch size={30} />
+          <h2>تاریخ آدرس معتبر نیست</h2>
+          <p>پارامتر day باید تاریخ معتبر میلادی با قالب YYYY-MM-DD باشد.</p>
+          <Link
+            className="days-text-button"
+            to={dayDetailsPath(mockSnapshotDate)}
+          >
+            مشاهدهٔ آخرین روز نمونه
+            <ArrowUpLeft size={15} />
+          </Link>
+        </div>
+      </main>
+    );
+  }
+  const initialDate = requested ?? mockSnapshotDate;
+  return (
+    <DaysExplorer
+      key={initialDate}
+      initialDate={initialDate}
+      onDateChange={(date) => {
+        if (params.get("day") === date) return;
+        setParams((previous) => {
+          const next = new URLSearchParams(previous);
+          next.set("day", date);
+          return next;
+        });
+      }}
+    />
+  );
+}
+
+function DaysExplorer({
+  initialDate,
+  onDateChange,
+}: {
+  initialDate: string;
+  onDateChange: (date: string) => void;
+}) {
+  const [selectedDate, setSelectedDate] = useState(initialDate);
+  const [expanded, setExpanded] = useState<string | null>(initialDate);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
-  const [page, setPage] = useState(0);
+  const [page, setPage] = useState(() =>
+    Math.max(
+      0,
+      Math.floor(mockDays.findIndex((day) => day.date === initialDate) / 5),
+    ),
+  );
   const [calendarKey, setCalendarKey] = useState(0);
   const filtered = mockDays.filter(
     (day) =>
@@ -52,6 +109,7 @@ export function DaysPage() {
   ).length;
 
   function selectDate(date: string) {
+    onDateChange(date);
     setSelectedDate(date);
     setExpanded(date);
     setSearch("");
@@ -60,6 +118,7 @@ export function DaysPage() {
     setPage(index < 0 ? 0 : Math.floor(index / pageSize));
   }
   function toggleDay(date: string) {
+    onDateChange(date);
     setSelectedDate(date);
     setExpanded(expanded === date ? null : date);
     setCalendarKey((key) => key + 1);
