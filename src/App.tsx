@@ -5,6 +5,7 @@ import { Header } from "./components/Header";
 import { Footer } from "./components/Footer";
 import { navigation } from "./config/navigation";
 import { WorkspacePage } from "./pages/WorkspacePage";
+import { DaysPage } from "./pages/DaysPage";
 
 export function App() {
   const { pathname } = useLocation();
@@ -85,7 +86,9 @@ export function App() {
           menuOpen={menuOpen}
           onMenu={() => setMenuOpen(true)}
         />
-        {page ? (
+        {pathname === "/days" ? (
+          <DaysPage />
+        ) : page ? (
           <WorkspacePage page={page} />
         ) : (
           <main id="main-content" className="main-content" tabIndex={-1}>
