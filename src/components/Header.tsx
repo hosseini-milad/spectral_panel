@@ -1,4 +1,5 @@
 import { ChevronLeft, Menu, Orbit } from "lucide-react";
+import { ThemeToggle } from "./ThemeToggle";
 
 export function Header({
   title,
@@ -28,6 +29,7 @@ export function Header({
         <span className="breadcrumb-current">{title}</span>
       </div>
       <div className="header-meta">
+        <ThemeToggle />
         <span className="version-badge">
           <span />
           نسخهٔ اولیه
