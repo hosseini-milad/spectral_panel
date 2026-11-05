@@ -1,0 +1,330 @@
+:root {
+  --page-bg: #f5f7f8;
+  --surface: #ffffff;
+  --surface-soft: #f8faf9;
+  --surface-raised: #ffffff;
+  --text: #30494e;
+  --text-secondary: #70878c;
+  --text-muted: #98a9ae;
+  --line: #e4ebed;
+  --accent: #598f77;
+  --accent-soft: #edf6f0;
+  --accent-border: #cce2d4;
+  --chart-green: #80af97;
+  --chart-blue: #92b7d7;
+  --chart-lilac: #b9a6d5;
+  --chart-amber: #d7ad79;
+  --chart-muted: #d9e2e3;
+  --chart-grid: #e9eeed;
+  --chart-track: #edf2ef;
+  --warning-bg: #fff7e8;
+  --warning-text: #a17d3d;
+  --warning-border: #efe0bd;
+  --blue-soft: #eef5fa;
+  --lilac-soft: #f3f0f9;
+  color: var(--text);
+  background: var(--page-bg);
+}
+:root[data-theme="dark"] {
+  --page-bg: #101c20;
+  --surface: #19282d;
+  --surface-soft: #162329;
+  --surface-raised: #20333a;
+  --text: #d4e2e3;
+  --text-secondary: #a2b7ba;
+  --text-muted: #879fa5;
+  --line: #2b3c42;
+  --accent: #8bc4aa;
+  --accent-soft: #213c34;
+  --accent-border: #375c4c;
+  --chart-green: #8ac4a7;
+  --chart-blue: #86b5d7;
+  --chart-lilac: #baa5dc;
+  --chart-amber: #d8ad78;
+  --chart-muted: #526b74;
+  --chart-grid: #2b3d42;
+  --chart-track: #283a3d;
+  --warning-bg: #3b3225;
+  --warning-text: #d3b47c;
+  --warning-border: #584932;
+  --blue-soft: #233846;
+  --lilac-soft: #342f48;
+}
+.theme-toggle {
+  gap: 6px;
+  color: var(--text-secondary);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 7px;
+  padding: 6px 9px;
+}
+.theme-label {
+  font-size: 9px;
+}
+.theme-toggle:hover {
+  background: var(--surface-soft);
+}
+/* Shared shell: the sidebar retains its established deep-green palette. */
+:root[data-theme="dark"]
+  :is(.header, .workspace-card, .days-card, .art-spark, .skip-link) {
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--text);
+}
+:root[data-theme="dark"]
+  :is(
+    .header,
+    .footer,
+    .sidebar-brand,
+    .card-topline,
+    .card-bottomline,
+    .sidebar-bottom,
+    .page-heading
+  ) {
+  border-color: var(--line);
+}
+:root[data-theme="dark"] :is(h1, h2, .breadcrumb-current, .brand-title) {
+  color: var(--text);
+}
+:root[data-theme="dark"]
+  :is(
+    .eyebrow,
+    .page-description,
+    .breadcrumb-root,
+    .project-name,
+    .footer,
+    .workspace-placeholder > p,
+    .placeholder-hint,
+    .card-topline,
+    .card-bottomline
+  ) {
+  color: var(--text-muted);
+}
+:root[data-theme="dark"] :is(.card-bottomline, .version-badge) {
+  background: var(--surface-soft);
+  border-color: var(--line);
+  color: var(--text-secondary);
+}
+:root[data-theme="dark"] .header-divider {
+  background: var(--line);
+}
+:root[data-theme="dark"] .workspace-placeholder {
+  background: radial-gradient(ellipse at 50% 25%, #35574b20, transparent 65%);
+}
+:root[data-theme="dark"] .art-orbit {
+  border-color: var(--line);
+}
+:root[data-theme="dark"] :is(.art-center, .phase-label) {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+:root[data-theme="dark"] .art-point {
+  border-color: var(--surface);
+}
+/* Existing days page and the shared Persian calendar. */
+:root[data-theme="dark"]
+  :is(
+    .days-page select,
+    .days-search,
+    .day-calendar-icon,
+    .chunks-panel > .days-table-scroll,
+    .table-pagination button,
+    .days-button,
+    .report-method
+  ) {
+  background: var(--surface);
+  color: var(--text-secondary);
+  border-color: var(--line);
+}
+:root[data-theme="dark"]
+  :is(.days-page thead th, .calendar-heading > span, .count-badge) {
+  background: var(--surface-soft);
+  color: var(--text-muted);
+  border-color: var(--line);
+}
+:root[data-theme="dark"]
+  :is(
+    .day-row,
+    .day-detail-tabs,
+    .day-quick-stats > div,
+    .chunks-table tbody > tr,
+    .chunk-metrics,
+    .selection-card .days-text-button,
+    .calendar-legend,
+    .report-method
+  ) {
+  border-color: var(--line);
+}
+:root[data-theme="dark"]
+  :is(
+    .days-page .day-expanded-row > td,
+    .chunk-detail,
+    .chunks-table tbody > tr:has(.chunk-name):hover,
+    .chunk-expanded
+  ) {
+  background: var(--surface-soft);
+  border-color: var(--line);
+}
+:root[data-theme="dark"]
+  :is(
+    .day-row.selected-day,
+    .day-row:hover,
+    .calendar-day.has-data,
+    .day-calendar-icon.chosen,
+    .table-pagination .current-page
+  ) {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+}
+:root[data-theme="dark"]
+  :is(
+    .overview-metric strong,
+    .day-select,
+    .day-quick-stats strong,
+    .numeric-cell,
+    .days-search input,
+    .days-page h3,
+    .days-page h4,
+    .selection-card h2,
+    .chunk-metrics dd
+  ) {
+  color: var(--text);
+}
+:root[data-theme="dark"]
+  :is(
+    .days-notice,
+    .snapshot-label,
+    .overview-metric > div > span,
+    .overview-metric small,
+    .recent-heading p,
+    .day-select small,
+    .cell-caption,
+    .coverage-value,
+    .day-quick-stats span,
+    .day-quick-stats small,
+    .chunk-toolbar p,
+    .chunk-name,
+    .chunk-name small,
+    .chunk-detail-note,
+    .stage-step p,
+    .stage-step small,
+    .report-heading p,
+    .report-stages,
+    .report-method > p,
+    .report-method dd,
+    .report-assessment p,
+    .export-feedback,
+    .partition-note,
+    .calendar-caption,
+    .calendar-legend > span,
+    .calendar-day,
+    .calendar-month strong,
+    .selection-label,
+    .selection-facts,
+    .selection-coverage,
+    .selected-iso,
+    .detail-mock-note,
+    .days-page .duration-cell,
+    .table-pagination,
+    .coverage-value small,
+    .table-empty
+  ) {
+  color: var(--text-secondary);
+}
+:root[data-theme="dark"]
+  :is(
+    .days-text-button,
+    .calendar-legend button,
+    .day-detail-tabs button[aria-selected="true"],
+    .calendar-day.has-data,
+    .selection-coverage strong
+  ) {
+  color: var(--accent);
+}
+:root[data-theme="dark"] .calendar-day.selected {
+  background: #6ca48a;
+  color: #0f261b;
+  border-color: #6ca48a;
+}
+:root[data-theme="dark"]
+  :is(
+    .metric-icon.green,
+    .stage-step.complete > span,
+    .status-pill.complete,
+    .assessment-icon
+  ) {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent-border);
+}
+:root[data-theme="dark"]
+  :is(
+    .metric-icon.blue,
+    .stage-step.running > span,
+    .status-pill.processing,
+    .status-pill.running
+  ) {
+  background: var(--blue-soft);
+  color: var(--chart-blue);
+  border-color: var(--line);
+}
+:root[data-theme="dark"] .metric-icon.purple {
+  background: var(--lilac-soft);
+  color: var(--chart-lilac);
+}
+:root[data-theme="dark"]
+  :is(
+    .mock-badge,
+    .no-day-data,
+    .metric-icon.amber,
+    .stage-step.failed > span,
+    .chunk-error,
+    .assessment-icon.warning,
+    .status-pill.failed,
+    .status-pill.attention,
+    .status-pill.partial
+  ) {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+  border-color: var(--warning-border);
+}
+:root[data-theme="dark"] .status-pill.pending {
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+}
+:root[data-theme="dark"] .report-assessment {
+  background: var(--surface);
+  border-color: var(--line);
+}
+:root[data-theme="dark"] .stage-step.pending > span {
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  border-color: var(--line);
+}
+:root[data-theme="dark"] .days-page progress,
+:root[data-theme="dark"] .days-page progress::-webkit-progress-bar {
+  background: var(--chart-track);
+}
+:root[data-theme="dark"] .days-page progress::-webkit-progress-value {
+  background: var(--chart-green);
+}
+:root[data-theme="dark"] .days-page progress::-moz-progress-bar {
+  background: var(--chart-green);
+}
+@media (max-width: 600px) {
+  .header-meta {
+    gap: 7px;
+  }
+  .theme-toggle {
+    padding: 6px;
+  }
+  .theme-label {
+    display: none;
+  }
+}
+@media (max-width: 360px) {
+  .header-meta .version-badge {
+    display: none;
+  }
+}

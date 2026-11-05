@@ -54,6 +54,7 @@ export function PersianCalendar({
       </div>
       <div className="calendar-month">
         <button
+          type="button"
           className="icon-button"
           aria-label="ماه قبل"
           onClick={() => setMonth(monthStart(addDays(start, -1)))}
@@ -62,6 +63,7 @@ export function PersianCalendar({
         </button>
         <strong aria-live="polite">{title}</strong>
         <button
+          type="button"
           className="icon-button"
           aria-label="ماه بعد"
           onClick={() => setMonth(next)}
@@ -82,6 +84,7 @@ export function PersianCalendar({
           const date = iso(addDays(start, index));
           return (
             <button
+              type="button"
               key={date}
               className={`calendar-day${selectedDate === date ? " selected" : ""}${hasData.has(date) ? " has-data" : ""}`}
               aria-pressed={selectedDate === date}
@@ -103,6 +106,7 @@ export function PersianCalendar({
           دارای دادهٔ ماک
         </span>
         <button
+          type="button"
           onClick={() => {
             setMonth(monthStart(utcDate(mockSnapshotDate)));
             onSelect(mockSnapshotDate);

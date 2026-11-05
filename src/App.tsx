@@ -6,6 +6,7 @@ import { Footer } from "./components/Footer";
 import { navigation } from "./config/navigation";
 import { WorkspacePage } from "./pages/WorkspacePage";
 import { DaysPage } from "./pages/DaysPage";
+import { VisualizationsPage } from "./pages/VisualizationsPage";
 
 export function App() {
   const { pathname } = useLocation();
@@ -86,7 +87,9 @@ export function App() {
           menuOpen={menuOpen}
           onMenu={() => setMenuOpen(true)}
         />
-        {pathname === "/days" ? (
+        {pathname === "/visualizations" ? (
+          <VisualizationsPage />
+        ) : pathname === "/days" ? (
           <DaysPage />
         ) : page ? (
           <WorkspacePage page={page} />
