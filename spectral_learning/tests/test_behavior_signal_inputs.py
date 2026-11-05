@@ -59,12 +59,12 @@ class SignalInputTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.fixture.doCleanups()
 
-    def export(self):
+    def export(self, **options):
         with patch('spectral_learning.services.behavior_signal_inputs.get_db', return_value=self.fixture.db), \
              patch('spectral_learning.services.behavior_signal_inputs.load_raw_chunks',
                    side_effect=lambda day: copy.deepcopy(self.fixture.graphs[day])), \
              patch('torch.optim.Adam', side_effect=AssertionError('Must not train')):
-            return build_behavior_signal_inputs(self.experiment, alpha=.25)
+            return build_behavior_signal_inputs(self.experiment, alpha=.25, **options)
 
     def test_frozen_export_contract_references_and_nulls_are_consistent(self):
         result = self.export(); folder = Path(result['directory'])
@@ -88,6 +88,81 @@ class SignalInputTests(unittest.TestCase):
         self.assertEqual(first['run_id'], second['run_id'])
         self.assertEqual((Path(first['directory'])/'observations.jsonl').read_bytes(),
                          (Path(second['directory'])/'observations.jsonl').read_bytes())
+
+    def test_single_chunk_preserves_original_global_index_masks_and_edge_targets(self):
+        from spectral_learning.services.autoencoder_inputs import (prepare_chunk, masked_topology,
+            feature_corruption, transform, analyze_graph)
+        from spectral_learning.services.normal_behavior_reports import load_reference_bundle
+        _, scaler, *_ = load_reference_bundle(self.reference)
+        graph = copy.deepcopy(self.fixture.graphs['2026-06-21'][0])
+        chunk = prepare_chunk(graph, 'additional_day', scaler, seed=17, index=5, max_pairs=8)
+        masked, pairs, labels, weights = masked_topology(graph, analyze_graph(graph), 17+5, 8)
+        values, mask = transform(graph, scaler)
+        expected_hidden = feature_corruption(mask, np.random.default_rng(17+1000+5))
+        np.testing.assert_array_equal(chunk.fixed_hidden, expected_hidden)
+        np.testing.assert_array_equal(chunk.pairs, pairs)
+        np.testing.assert_array_equal(chunk.pair_labels, labels)
+        np.testing.assert_array_equal(chunk.positive_weights, weights)
+        np.testing.assert_array_equal(chunk.values, values)
+        np.testing.assert_array_equal(chunk.spectral.arrays['edge_index'], analyze_graph(masked).arrays['edge_index'])
+
+    def test_only_one_prepared_spectral_chunk_is_alive(self):
+        import weakref
+        from spectral_learning.services.autoencoder_inputs import prepare_chunk
+        live = []
+        def tracked(*args, **kwargs):
+            self.assertFalse(any(ref() is not None for ref in live))
+            chunk = prepare_chunk(*args, **kwargs)
+            live.append(weakref.ref(chunk))
+            return chunk
+        with patch('spectral_learning.services.behavior_signal_inputs.prepare_chunk', side_effect=tracked):
+            self.export()
+        self.assertGreater(len(live), 6)  # includes calibration replay
+
+    def test_completed_export_resumes_after_database_failure_without_inference(self):
+        from pymongo.errors import ConnectionFailure
+        messages = []
+        with patch('spectral_learning.services.behavior_signal_inputs._verify_raw_sources',
+                   side_effect=ConnectionFailure('MongoDB stopped')):
+            with self.assertRaisesRegex(ConnectionFailure, 'MongoDB stopped'):
+                self.export(progress=messages.append)
+        folder = Path(messages[-1].split('export: ', 1)[1])
+        status = json.loads((folder/'run_status.json').read_text())
+        payload = (folder/'observations.jsonl').read_bytes()
+        self.assertEqual(status['status'], 'failed')
+        self.assertFalse((folder/'manifest.json').exists())
+        with patch('spectral_learning.services.behavior_signal_inputs.prepare_chunk',
+                   side_effect=AssertionError('Must not repeat spectral preparation')), \
+             patch('spectral_learning.services.behavior_signal_inputs._evaluate',
+                   side_effect=AssertionError('Must not repeat inference')):
+            result = self.export(resume_bundle=folder)
+        self.assertEqual(result['run_id'], status['run_id'])
+        self.assertEqual((folder/'observations.jsonl').read_bytes(), payload)
+        self.assertEqual(json.loads((folder/'run_status.json').read_text())['status'], 'complete')
+        self.assertTrue(json.loads((folder/'manifest.json').read_text())['inference_reused'])
+
+    def test_resume_rejects_truncated_tampered_and_wrong_calibration_exports(self):
+        for kind in ('truncated', 'tampered', 'calibration'):
+            with self.subTest(kind=kind):
+                result = self.export(); folder = Path(result['directory'])
+                original_status = (folder/'run_status.json').read_bytes()
+                path = folder/'observations.jsonl'
+                if kind == 'truncated':
+                    path.write_text(''.join(path.read_text().splitlines(keepends=True)[:-1]))
+                elif kind == 'tampered':
+                    path.write_text(path.read_text().replace('candidate_flow', 'changed', 1))
+                else:
+                    (folder/'calibration.json').write_text('{}')
+                with self.assertRaises(ValueError):
+                    self.export(resume_bundle=folder)
+                self.assertEqual((folder/'run_status.json').read_bytes(), original_status)
+                self.assertTrue((folder/'resume_attempt_error.json').exists())
+
+    def test_resume_rejects_temporary_only_export(self):
+        result = self.export(); folder = Path(result['directory'])
+        (folder/'observations.jsonl').rename(folder/'observations.jsonl.tmp')
+        with self.assertRaisesRegex(ValueError, 'completed observations.jsonl'):
+            self.export(resume_bundle=folder)
 
     def test_tampered_checkpoint_stops_before_database_access(self):
         path = self.experiment/'seed-17/spectral/neighborhood/model.pt'; original = path.read_bytes()
@@ -114,11 +189,11 @@ class SignalInputTests(unittest.TestCase):
         self.addCleanup(lambda:self.fixture.graphs.pop(day,None))
         self.addCleanup(lambda:self.fixture.db.security_data.delete_many({'source_day':day}))
 
-    def extended_export(self, roles):
+    def extended_export(self, roles, **options):
         with patch('spectral_learning.services.behavior_signal_inputs.get_db',return_value=self.fixture.db), \
              patch('spectral_learning.services.behavior_signal_inputs.load_raw_chunks',side_effect=lambda day:copy.deepcopy(self.fixture.graphs[day])), \
              patch('torch.optim.Adam',side_effect=AssertionError('No new training')):
-            return build_behavior_signal_inputs(self.experiment,alpha=.25,normal_day_roles=roles)
+            return build_behavior_signal_inputs(self.experiment,alpha=.25,normal_day_roles=roles,**options)
 
     def test_whole_normal_days_extend_group_roles_without_refitting_node_calibration(self):
         from spectral_learning.services.hierarchy_behavior import read_signal_bundle
@@ -132,6 +207,20 @@ class SignalInputTests(unittest.TestCase):
         calibration=json.loads((folder/'calibration.json').read_text())
         self.assertEqual(calibration['degree:connected']['n'],9)
         self.assertIn('2026-06-22',manifest['identity']['protected_historical_signatures'])
+
+    def test_resume_whole_day_roles_keeps_protected_history_and_payload(self):
+        roles={'2026-06-15':'normal_group_calibration'}
+        self.add_normal_day('2026-06-15')
+        first=self.extended_export(roles);folder=Path(first['directory'])
+        payload=(folder/'observations.jsonl').read_bytes()
+        with patch('spectral_learning.services.behavior_signal_inputs._evaluate',
+                   side_effect=AssertionError('Resume must not infer')):
+            second=self.extended_export(roles,resume_bundle=folder)
+        self.assertEqual(first['run_id'],second['run_id'])
+        self.assertEqual(payload,(folder/'observations.jsonl').read_bytes())
+        # Changing the day role cannot reuse even an otherwise intact payload.
+        with self.assertRaisesRegex(ValueError,'identity differs'):
+            self.extended_export({'2026-06-15':'normal_group_train'},resume_bundle=folder)
 
     def test_new_normal_days_reject_historical_aliases_and_non_normal_labels(self):
         self.add_normal_day('2026-06-15');roles={'2026-06-15':'normal_group_calibration'}

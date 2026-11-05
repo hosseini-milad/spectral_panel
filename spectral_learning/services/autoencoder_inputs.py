@@ -124,19 +124,23 @@ class PreparedChunk:
     positive_weights: np.ndarray
 
 
+def prepare_chunk(graph, split, scaler, *, seed=17, index=0, max_pairs=2048, progress=None):
+    """One chunk, preserving the original global-index-dependent RNG seeds."""
+    if progress:
+        progress(f'[AUTOENCODER] Prepare {index + 1}: {graph.key}; split={split}')
+    original = analyze_graph(graph)
+    masked, pairs, labels, weights = masked_topology(graph, original, seed + index, max_pairs)
+    spectral = analyze_graph(masked)
+    values, mask = transform(graph, scaler)
+    fixed_hidden = feature_corruption(mask, np.random.default_rng(seed + 1000 + index))
+    return PreparedChunk(graph, split, original, spectral, values, mask,
+                         fixed_hidden, pairs, labels, weights)
+
+
 def prepare_chunks(graphs, splits, scaler, *, seed=17, max_pairs=2048, progress=None,
                    required_splits=('train', 'validation', 'test')):
-    prepared = []
-    for i, graph in enumerate(graphs):
-        if progress:
-            progress(f'[AUTOENCODER] Prepare {i + 1}/{len(graphs)}: {graph.key}; split={splits[graph.key]}')
-        original = analyze_graph(graph)
-        masked, pairs, labels, weights = masked_topology(graph, original, seed + i, max_pairs)
-        spectral = analyze_graph(masked)
-        values, mask = transform(graph, scaler)
-        fixed_hidden = feature_corruption(mask, np.random.default_rng(seed + 1000 + i))
-        prepared.append(PreparedChunk(graph, splits[graph.key], original, spectral, values, mask,
-                                      fixed_hidden, pairs, labels, weights))
+    prepared = [prepare_chunk(graph, splits[graph.key], scaler, seed=seed, index=i,
+                max_pairs=max_pairs, progress=progress) for i, graph in enumerate(graphs)]
     for split in required_splits:
         if not any(chunk.mask.any() for chunk in prepared if chunk.split == split):
             raise ValueError(f'No observed active features in {split} chunk set')

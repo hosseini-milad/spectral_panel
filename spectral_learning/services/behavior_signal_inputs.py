@@ -4,6 +4,7 @@ from pathlib import Path
 import json
 import math
 import uuid
+import gc
 
 import numpy as np
 import torch
@@ -12,7 +13,7 @@ from pymongo import UpdateOne
 from threadpoolctl import threadpool_limits
 
 from ingestion.utils.document_paths import document_directory
-from .autoencoder_inputs import load_raw_chunks, prepare_chunks
+from .autoencoder_inputs import load_raw_chunks, prepare_chunk, transform
 from .normal_behavior import (audit_graph_identities, reference_splits, _signatures,
                               _verify_raw_sources, calibration_threshold, tail_probabilities)
 from .normal_behavior_reports import load_reference_bundle, _sha
@@ -21,6 +22,7 @@ from .neighborhood_experiment import _evaluate
 from .spectral_inputs import fingerprint
 from .spectral_reports import dump_json
 from .message_passing_reports import write_csv
+from .signal_resume import collect_row, reuse_completed_export
 
 CHANNELS = ('feature', 'degree', 'neighbor_mean', 'neighbor_std')
 VERSION = 'behavior_signal_inputs_v1'
@@ -136,7 +138,7 @@ def persist_inputs(db, run, jsonl):
 
 
 def build_behavior_signal_inputs(experiment_bundle, *, seed=17, alpha=.01,
-                                 reference_bundle=None, write=False, progress=None, normal_day_roles=None):
+                                 reference_bundle=None, write=False, progress=None, normal_day_roles=None, resume_bundle=None):
     if not 0 < alpha < 1:
         raise ValueError('Require 0 < alpha < 1')
     roles = dict(normal_day_roles or {})
@@ -195,8 +197,16 @@ def build_behavior_signal_inputs(experiment_bundle, *, seed=17, alpha=.01,
         identity['normal_group_day_roles'] = roles
         identity['calibration_policy'] += '_whole_day_group_roles_v1'
     run_id = fingerprint(identity); calibration_id = fingerprint(dict(run_id=run_id, role='calibration'))
-    folder = document_directory('autoencoder', layer=1, day=saved['normal_day']) / 'signal_inputs' / 'runs' / uuid.uuid4().hex
-    folder.mkdir(parents=True); dump_json(folder / 'run_status.json', dict(status='building', run_id=run_id))
+    resume_verified = False
+    if resume_bundle:
+        folder = Path(resume_bundle).resolve()
+        resume_status = json.loads((folder / 'run_status.json').read_text(encoding='utf-8'))
+        if not (folder / 'observations.jsonl').is_file():
+            raise ValueError('Resume requires completed observations.jsonl, not .tmp; rerun without --resume-signal-bundle.')
+    else:
+        folder = document_directory('autoencoder', layer=1, day=saved['normal_day']) / 'signal_inputs' / 'runs' / uuid.uuid4().hex
+        folder.mkdir(parents=True)
+        dump_json(folder / 'run_status.json', dict(status='building', run_id=run_id))
     previous_threads = torch.get_num_threads()
     try:
         torch.set_num_threads(1)
@@ -220,7 +230,7 @@ def build_behavior_signal_inputs(experiment_bundle, *, seed=17, alpha=.01,
                 # evaluation days not emitted by the current experiment.
                 from .normal_behavior import record_identity
                 from ingestion.services.graph.components import load_node_documents
-                protected = list(source); protected_signatures = {}
+                protected = list(source); protected_signatures = {}; history = []; docs = {}
                 for day in sorted(historical_days - set(experiment['source_signatures'])):
                     history = sorted(load_raw_chunks(day), key=lambda g: g.chunk)
                     if not history:
@@ -257,77 +267,112 @@ def build_behavior_signal_inputs(experiment_bundle, *, seed=17, alpha=.01,
                 identity['protected_historical_signatures'] = protected_signatures
                 identity['protected_historical_lineage'] = {r['graph_key']: r['raw_signature'] for r in history_rows}
                 run_id = fingerprint(identity); calibration_id = fingerprint(dict(run_id=run_id, role='calibration'))
-                dump_json(folder / 'run_status.json', dict(status='building', run_id=run_id))
                 signatures = identity['lineage_signatures']
             split = reference_splits([g for g in graphs if g.day == saved['normal_day']])
             if split != saved['chunk_splits']:
                 raise ValueError('Reference splits changed')
-            chunks = prepare_chunks(graphs, {g.key: split.get(g.key, roles.get(g.day, 'additional_day')) for g in graphs},
-                scaler, seed=seed, max_pairs=parameters['max_pairs'], progress=progress,
-                required_splits=('train', 'validation', 'calibration', 'test'))
+            splits = {g.key: split.get(g.key, roles.get(g.day, 'additional_day')) for g in graphs}
+            if not resume_bundle:
+                dump_json(folder / 'run_status.json', dict(status='building', run_id=run_id, phase='frozen_replay'))
+            # Release provenance working sets before spectral replay; only the
+            # retained raw graph catalog remains in memory across chunks.
+            seen.clear(); source.clear()
+            if roles:
+                protected.clear(); history.clear(); docs.clear()
+            gc.collect()
             frozen = {k: v.clone() for k, v in model.state_dict().items()}
             def infer(chunk):
                 _, _, _, arrays = _evaluate(model, chunk, normalization, neighborhood_targets(chunk), {})
                 return arrays
-            calibration = fit_calibration([(c.split, infer(c)) for c in chunks if c.split == 'calibration'], alpha)
-            dump_json(folder / 'calibration.json', {k: {n: v for n, v in state.items() if n != 'values'} for k, state in calibration.items()})
-            np.savez_compressed(folder / 'calibration_arrays.npz', **{k.replace(':', '_'): v['values'] for k, v in calibration.items()})
-            summaries = {}; samples = {}; observation_count = 0
-            temporary = folder / 'observations.jsonl.tmp'
-            with temporary.open('w', encoding='utf-8') as stream:
-                for chunk in chunks:
-                    if progress:
-                        progress(f'[SIGNAL INPUTS] Frozen inference {chunk.graph.key}')
+            if resume_bundle:
+                if resume_status.get('run_id') != run_id:
+                    raise ValueError('Resume run identity differs from current sources/model/roles/alpha')
+                if progress:
+                    progress('[SIGNAL INPUTS] Validate completed export; frozen inference will be reused')
+                observation_count, summaries, samples = reuse_completed_export(
+                    folder, graphs, splits, identity, run_id, calibration_id, saved['run_id'], alpha)
+                resume_verified = True
+                dump_json(folder / 'run_status.json', dict(status='building', run_id=run_id, phase='resume_verified_export'))
+            else:
+                for required in ('train', 'validation', 'calibration', 'test'):
+                    if not any(transform(g, scaler)[1].any() for g in graphs if splits[g.key] == required):
+                        raise ValueError(f'No observed active features in {required} chunk set')
+                evidence = []
+                for index, graph in enumerate(graphs):
+                    if splits[graph.key] != 'calibration':
+                        continue
+                    chunk = prepare_chunk(graph, splits[graph.key], scaler, seed=seed, index=index,
+                                          max_pairs=parameters['max_pairs'], progress=progress)
                     arrays = infer(chunk)
-                    for i, node_id in enumerate(arrays['node_ids']):
-                        signals = {name: channel_value(name, arrays, i, calibration, calibration_id) for name in CHANNELS}
-                        for name in ['cross_level_structure', 'temporal_context']:
-                            signals[name] = dict(status='not_computed', reason='not_implemented', residual=None,
-                                                 tail_probability=None, threshold=None, exceeds_tail=None)
-                        block = chunk.original.blocks[int(arrays['component_index'][i])]
-                        entity = dict(type='candidate_flow', structural_layer=1, node_id=str(node_id),
-                            graph_key=chunk.graph.key, chunk_index=chunk.graph.chunk, source_day=chunk.graph.day,
-                            component_id=block.get('source_component_id'), local_component_index=int(arrays['component_index'][i]),
-                            meta_component_id=None)
-                        row = dict(_id=fingerprint(dict(run_id=run_id, graph=chunk.graph.key, node=str(node_id))),
-                            schema_version=VERSION, run_id=run_id, entity=entity, split=chunk.split,
-                            raw_source=dict(collection='security_data', record_id=str(arrays['raw_record_ids'][i]),
-                                canonical_event_id=None, canonical_origin_status='not_verified',
-                                event_time=None, event_time_status='not_loaded_no_temporal_signal'),
-                            source_signature=identity['source_signatures'][chunk.graph.day][chunk.graph.key],
-                            raw_lineage_signature=signatures[chunk.graph.key],
-                            inference_graph_signature=chunk.graph.signature, model_id=artifact['checksum'],
-                            reference_run_id=saved['run_id'], calibration_id=calibration_id,
-                            representation=dict(view='full_topology_full_active_features', vector=arrays['latent'][i].tolist()),
-                            residual_view='edge_holdout_topology_fixed_masked_features', isolated=bool(arrays['isolated'][i]),
-                            signals=signals, fusion=dict(status='not_computed', score=None, alert=None),
-                            quality=dict(contract_valid=True, release_status='experimental', operational_ready=False,
-                                calibration_diagnostic_in_sample=chunk.split == 'calibration',
-                                missing_signal_families=['cross_level_structure', 'temporal_context']))
-                        validate_observation(row)
-                        row['content_sha256'] = fingerprint(row)
-                        stream.write(json.dumps(row, ensure_ascii=False, allow_nan=False) + '\n'); observation_count += 1
-                        sample_key = (chunk.graph.day, chunk.split, row['isolated'])
-                        if len(samples.setdefault(sample_key, [])) < 2:
-                            samples[sample_key].append(row)
-                        for name in CHANNELS:
-                            signal = signals[name]; key = (chunk.graph.day, chunk.split, name, signal['calibration_group'])
-                            counts = summaries.setdefault(key, dict(nodes=0, valid=0, unavailable=0, uncalibrated=0, tail_exceedances=0))
-                            counts['nodes'] += 1; counts[signal['status']] += 1
-                            counts['tail_exceedances'] += signal['exceeds_tail'] is True
-            temporary.rename(folder / 'observations.jsonl')
+                    lean = {k: arrays[k] for k in ['isolated', *[c+s for c in CHANNELS for s in ('_valid', '_mse')]]}
+                    evidence.append(('calibration', lean))
+                    del chunk, arrays
+                    gc.collect()
+                calibration = fit_calibration(evidence, alpha)
+                del evidence
+                dump_json(folder / 'calibration.json', {k: {n: v for n, v in state.items() if n != 'values'} for k, state in calibration.items()})
+                np.savez_compressed(folder / 'calibration_arrays.npz', **{k.replace(':', '_'): v['values'] for k, v in calibration.items()})
+            if not resume_bundle:
+                summaries = {}; samples = {}; observation_count = 0
+                temporary = folder / 'observations.jsonl.tmp'
+                with temporary.open('w', encoding='utf-8') as stream:
+                    for index, graph in enumerate(graphs):
+                        chunk = prepare_chunk(graph, splits[graph.key], scaler, seed=seed, index=index,
+                                              max_pairs=parameters['max_pairs'], progress=progress)
+                        if progress:
+                            progress(f'[SIGNAL INPUTS] Frozen inference {chunk.graph.key}')
+                        arrays = infer(chunk)
+                        inference_signature = chunk.graph.signature
+                        for i, node_id in enumerate(arrays['node_ids']):
+                            signals = {name: channel_value(name, arrays, i, calibration, calibration_id) for name in CHANNELS}
+                            for name in ['cross_level_structure', 'temporal_context']:
+                                signals[name] = dict(status='not_computed', reason='not_implemented', residual=None,
+                                                     tail_probability=None, threshold=None, exceeds_tail=None)
+                            block = chunk.original.blocks[int(arrays['component_index'][i])]
+                            entity = dict(type='candidate_flow', structural_layer=1, node_id=str(node_id),
+                                graph_key=chunk.graph.key, chunk_index=chunk.graph.chunk, source_day=chunk.graph.day,
+                                component_id=block.get('source_component_id'), local_component_index=int(arrays['component_index'][i]),
+                                meta_component_id=None)
+                            row = dict(_id=fingerprint(dict(run_id=run_id, graph=chunk.graph.key, node=str(node_id))),
+                                schema_version=VERSION, run_id=run_id, entity=entity, split=chunk.split,
+                                raw_source=dict(collection='security_data', record_id=str(arrays['raw_record_ids'][i]),
+                                    canonical_event_id=None, canonical_origin_status='not_verified',
+                                    event_time=None, event_time_status='not_loaded_no_temporal_signal'),
+                                source_signature=identity['source_signatures'][chunk.graph.day][chunk.graph.key],
+                                raw_lineage_signature=signatures[chunk.graph.key],
+                                inference_graph_signature=inference_signature, model_id=artifact['checksum'],
+                                reference_run_id=saved['run_id'], calibration_id=calibration_id,
+                                representation=dict(view='full_topology_full_active_features', vector=arrays['latent'][i].tolist()),
+                                residual_view='edge_holdout_topology_fixed_masked_features', isolated=bool(arrays['isolated'][i]),
+                                signals=signals, fusion=dict(status='not_computed', score=None, alert=None),
+                                quality=dict(contract_valid=True, release_status='experimental', operational_ready=False,
+                                    calibration_diagnostic_in_sample=chunk.split == 'calibration',
+                                    missing_signal_families=['cross_level_structure', 'temporal_context']))
+                            validate_observation(row)
+                            row['content_sha256'] = fingerprint(row)
+                            stream.write(json.dumps(row, ensure_ascii=False, allow_nan=False) + '\n'); observation_count += 1
+                            collect_row(row, summaries, samples, CHANNELS)
+                        del arrays, chunk
+                        gc.collect()
+                temporary.rename(folder / 'observations.jsonl')
+                dump_json(folder / 'run_status.json', dict(status='building', run_id=run_id, phase='export_complete_pending_source_verification'))
             if any(not torch.equal(v, frozen[k]) for k, v in model.state_dict().items()):
                 raise ValueError('Model changed during frozen signal replay')
             def verify():
-                for day in identity['source_signatures']:
-                    if _signatures(load_raw_chunks(day)) != identity['source_signatures'][day]:
+                if progress:
+                    progress('[SIGNAL INPUTS] Recheck MongoDB source graphs and raw lineage before completion')
+                for day, expected in identity['source_signatures'].items():
+                    fresh = load_raw_chunks(day)
+                    if _signatures(fresh) != expected:
                         raise ValueError('Source graph changed during export')
-                _verify_raw_sources(db, source, signatures)
-                if roles:
-                    for day, expected in protected_signatures.items():
-                        if _signatures(load_raw_chunks(day)) != expected:
-                            raise ValueError('Historical protected graph changed during export')
-                    _verify_raw_sources(db, [g for g in protected if g.day in protected_signatures], identity['protected_historical_lineage'])
+                    _verify_raw_sources(db, fresh, signatures)
+                    del fresh
+                for day, expected in identity.get('protected_historical_signatures', {}).items():
+                    fresh = load_raw_chunks(day)
+                    if _signatures(fresh) != expected:
+                        raise ValueError('Historical protected graph changed during export')
+                    _verify_raw_sources(db, fresh, identity['protected_historical_lineage'])
+                    del fresh
                 if (_sha(manifest_path) != experiment_manifest_sha
                         or _sha(reference / 'manifest.json') != reference_manifest_sha
                         or _sha(reference / 'reference_arrays.npz') != saved['reference_arrays_sha256']):
@@ -359,14 +404,16 @@ def build_behavior_signal_inputs(experiment_bundle, *, seed=17, alpha=.01,
                 observation_count=observation_count, payload_sha256=_sha(folder / 'observations.jsonl'),
                 calibration_sha256=_sha(folder / 'calibration_arrays.npz'), source_verified=True,
                 model_frozen_verified=True, contract=contract, fusion_status='not_computed', operational_ready=False)
-            dump_json(folder / 'manifest.json', dict(run, status='complete', mongo_write_requested=write))
             verify()
             if write:
                 persist_inputs(db, run, folder / 'observations.jsonl')
+            dump_json(folder / 'manifest.json', dict(run, status='complete', mongo_write_requested=write,
+                inference_reused=bool(resume_bundle), execution_policy='one_prepared_spectral_chunk_at_a_time'))
             dump_json(folder / 'run_status.json', dict(status='complete', run_id=run_id, mongo_written=write,
                 completed_at=datetime.now(timezone.utc).isoformat()))
     except BaseException as exc:
-        dump_json(folder / 'run_status.json', dict(status='failed', run_id=run_id, error=f'{type(exc).__name__}: {exc}'))
+        error_status = dict(status='failed', run_id=run_id, error=f'{type(exc).__name__}: {exc}')
+        dump_json(folder / ('resume_attempt_error.json' if resume_bundle and not resume_verified else 'run_status.json'), error_status)
         if progress:
             progress(f'[SIGNAL INPUTS] Failed/incomplete export: {folder}')
         raise

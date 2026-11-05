@@ -13,6 +13,7 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument('--experiment-bundle', required=True)
+        parser.add_argument('--resume-signal-bundle', help='Reuse a completed observations.jsonl after verifying pinned sources/model/calibration; no inference')
         parser.add_argument('--reference-bundle')
         parser.add_argument('--fit-days', nargs='+', required=True)
         parser.add_argument('--calibration-days', nargs='+', required=True)
@@ -40,7 +41,7 @@ class Command(BaseCommand):
                 load_hierarchy(db,day)
             self.stdout.write(f'[NORMAL GROUP REFERENCE] Fixed day roles: {roles}; encoder remains frozen')
             node=build_behavior_signal_inputs(options['experiment_bundle'],seed=options['seed'],alpha=options['alpha'],
-                reference_bundle=options['reference_bundle'],write=options['write'],progress=self.stdout.write,normal_day_roles=roles)
+                reference_bundle=options['reference_bundle'],resume_bundle=options['resume_signal_bundle'],write=options['write'],progress=self.stdout.write,normal_day_roles=roles)
             self.stdout.write(f"[NORMAL GROUP REFERENCE] Completed node inputs: {node['directory']}")
             group=run_hierarchy_behavior(node['directory'],alpha=options['alpha'],write=options['write'],progress=self.stdout.write)
         except Exception as exc:
