@@ -1,18 +1,10 @@
-import { useState } from "react";
 import { Moon, Sun } from "lucide-react";
-import { applyTheme, initialTheme, type Theme } from "../lib/theme";
+import { useThemePreference } from "../hooks/useThemePreference";
 
 export function ThemeToggle() {
-  const [theme, setTheme] = useState<Theme>(initialTheme);
+  const { theme, chooseTheme } = useThemePreference();
   function toggle() {
-    const next = theme === "light" ? "dark" : "light";
-    setTheme(next);
-    applyTheme(next);
-    try {
-      localStorage.setItem("spectral-theme", next);
-    } catch {
-      /* Keep the in-memory choice. */
-    }
+    chooseTheme(theme === "light" ? "dark" : "light");
   }
   return (
     <button

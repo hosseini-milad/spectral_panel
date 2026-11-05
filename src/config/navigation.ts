@@ -73,7 +73,7 @@ export const navigation = [
     label: "تنظیمات",
     group: "system",
     icon: Settings2,
-    description: "تنظیمات پنل و سیاست‌های دسترسی در مراحل بعدی توسعه.",
+    description: "تنظیمات عمومی، کلیدها، وب‌هوک‌ها، امنیت و اعلان‌های نمونه.",
   },
 ] as const;
 
