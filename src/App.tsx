@@ -9,6 +9,7 @@ import { DaysPage } from "./pages/DaysPage";
 import { VisualizationsPage } from "./pages/VisualizationsPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { OperationsPage } from "./pages/OperationsPage";
+import { ModelsPage } from "./pages/ModelsPage";
 
 export function App() {
   const { pathname } = useLocation();
@@ -92,7 +93,9 @@ export function App() {
           menuOpen={menuOpen}
           onMenu={() => setMenuOpen(true)}
         />
-        {pathname === "/operations" ? (
+        {pathname === "/models" ? (
+          <ModelsPage />
+        ) : pathname === "/operations" ? (
           <OperationsPage />
         ) : pathname === "/" ? (
           <OverviewPage />
