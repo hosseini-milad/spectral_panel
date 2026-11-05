@@ -1,9 +1,9 @@
 from django.urls import path
-from .api.views.ingest_view import IngestView
-from .api.views.normalize_view import NormalizeView
-from .api.views.sampling_view import SamplingView
-from .api.views.graph_view import GraphView
-from .api.views.pooling_view import PoolingView
+from api.legacy_ingestion.views.ingest_view import IngestView
+from api.legacy_ingestion.views.normalize_view import NormalizeView
+from api.legacy_ingestion.views.sampling_view import SamplingView
+from api.legacy_ingestion.views.graph_view import GraphView
+from api.legacy_ingestion.views.pooling_view import PoolingView
 
 urlpatterns = [
     path("ingest/", IngestView.as_view()),

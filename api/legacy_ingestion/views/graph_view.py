@@ -3,7 +3,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 
 from ..serializers.graph_serializer import GraphSerializer
-from ...pipelines.graph_pipeline import run_graph_pipeline
+from ingestion.pipelines.graph_pipeline import run_graph_pipeline
 
 
 class GraphView(APIView):

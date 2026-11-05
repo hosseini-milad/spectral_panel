@@ -1,7 +1,7 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from ...models.sampled_data import SampledSecurityData
+from ingestion.models.sampled_data import SampledSecurityData
 
 
 from ..serializers.pooling_serializer import (
@@ -9,12 +9,12 @@ from ..serializers.pooling_serializer import (
 )
 
 
-from ...pipelines.pooling_pipeline import (
+from ingestion.pipelines.pooling_pipeline import (
     run_pooling
 )
 
 
-from ...models.graph_metadata import (
+from ingestion.models.graph_metadata import (
     GraphMetadata
 )
 

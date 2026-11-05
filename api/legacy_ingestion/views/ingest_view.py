@@ -1,7 +1,7 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 
-from ...pipelines.ingest_pipeline import run_ingestion
+from ingestion.pipelines.ingest_pipeline import run_ingestion
 
 
 class IngestView(APIView):
