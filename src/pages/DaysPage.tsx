@@ -77,7 +77,7 @@ function DaysExplorer({
   initialDate: string;
   onDateChange: (date: string) => void;
 }) {
-  const [selectedDate, setSelectedDate] = useState(initialDate);
+  const selectedDate = initialDate;
   const [expanded, setExpanded] = useState<string | null>(initialDate);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
@@ -109,8 +109,13 @@ function DaysExplorer({
   ).length;
 
   function selectDate(date: string) {
+    // A different day is rendered only after the router commits its URL.
+    // Updating local selection first can race a quick Back/Forward action.
+    if (date !== initialDate) {
+      onDateChange(date);
+      return;
+    }
     onDateChange(date);
-    setSelectedDate(date);
     setExpanded(date);
     setSearch("");
     setStatus("all");
@@ -118,8 +123,11 @@ function DaysExplorer({
     setPage(index < 0 ? 0 : Math.floor(index / pageSize));
   }
   function toggleDay(date: string) {
+    if (date !== initialDate) {
+      onDateChange(date);
+      return;
+    }
     onDateChange(date);
-    setSelectedDate(date);
     setExpanded(expanded === date ? null : date);
     setCalendarKey((key) => key + 1);
   }

@@ -22,6 +22,8 @@
   --warning-border: #efe0bd;
   --blue-soft: #eef5fa;
   --lilac-soft: #f3f0f9;
+  --scrollbar-thumb: #bdcccc;
+  --scrollbar-hover: #91aaa5;
   color: var(--text);
   background: var(--page-bg);
 }
@@ -49,6 +51,47 @@
   --warning-border: #584932;
   --blue-soft: #233846;
   --lilac-soft: #342f48;
+  --scrollbar-thumb: #486069;
+  --scrollbar-hover: #668178;
+}
+/* Firefox uses the thin standard scrollbar; Chromium/WebKit use a 4px line. */
+html,
+body,
+.app-shell,
+.app-shell * {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+@supports selector(::-webkit-scrollbar) {
+  html,
+  body,
+  .app-shell,
+  .app-shell * {
+    scrollbar-width: auto;
+    scrollbar-color: auto;
+  }
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-hover);
+  }
+  ::-webkit-scrollbar-button {
+    width: 0;
+    height: 0;
+    display: none;
+  }
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
 }
 .theme-toggle {
   gap: 6px;

@@ -8,6 +8,7 @@ import { WorkspacePage } from "./pages/WorkspacePage";
 import { DaysPage } from "./pages/DaysPage";
 import { VisualizationsPage } from "./pages/VisualizationsPage";
 import { OverviewPage } from "./pages/OverviewPage";
+import { OperationsPage } from "./pages/OperationsPage";
 
 export function App() {
   const { pathname } = useLocation();
@@ -91,7 +92,9 @@ export function App() {
           menuOpen={menuOpen}
           onMenu={() => setMenuOpen(true)}
         />
-        {pathname === "/" ? (
+        {pathname === "/operations" ? (
+          <OperationsPage />
+        ) : pathname === "/" ? (
           <OverviewPage />
         ) : pathname === "/visualizations" ? (
           <VisualizationsPage />
