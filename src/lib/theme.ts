@@ -1,15 +1,44 @@
 export type Theme = "light" | "dark";
+export type ThemePreference = Theme | "system";
+let volatilePreference: ThemePreference | undefined;
 
-export function initialTheme(): Theme {
+export function themePreference(): ThemePreference {
+  if (volatilePreference !== undefined) return volatilePreference;
   try {
     const saved = localStorage.getItem("spectral-theme");
-    if (saved === "light" || saved === "dark") return saved;
+    if (saved === "light" || saved === "dark" || saved === "system")
+      return saved;
   } catch {
-    /* Storage can be disabled; the theme still works for this visit. */
+    /* Use the in-memory preference when storage is unavailable. */
   }
-  return window.matchMedia("(prefers-color-scheme: dark)").matches
-    ? "dark"
-    : "light";
+  return volatilePreference ?? "system";
+}
+
+export function resolveTheme(preference: ThemePreference): Theme {
+  return preference === "system"
+    ? window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light"
+    : preference;
+}
+
+export function initialTheme(): Theme {
+  return resolveTheme(themePreference());
+}
+
+export function chooseTheme(preference: ThemePreference) {
+  volatilePreference = preference;
+  try {
+    localStorage.setItem("spectral-theme", preference);
+  } catch {
+    /* The visit-local preference still applies. */
+  }
+  applyTheme(resolveTheme(preference));
+  window.dispatchEvent(new Event("spectral-theme-change"));
+}
+
+export function clearVolatileTheme() {
+  volatilePreference = undefined;
 }
 
 export function applyTheme(theme: Theme) {

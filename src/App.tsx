@@ -11,6 +11,8 @@ import { OverviewPage } from "./pages/OverviewPage";
 import { OperationsPage } from "./pages/OperationsPage";
 import { ModelsPage } from "./pages/ModelsPage";
 
+import { SettingsPage } from "./pages/SettingsPage";
+
 export function App() {
   const { pathname } = useLocation();
   const page = navigation.find((item) => item.path === pathname);
@@ -93,7 +95,9 @@ export function App() {
           menuOpen={menuOpen}
           onMenu={() => setMenuOpen(true)}
         />
-        {pathname === "/models" ? (
+        {pathname === "/settings" ? (
+          <SettingsPage />
+        ) : pathname === "/models" ? (
           <ModelsPage />
         ) : pathname === "/operations" ? (
           <OperationsPage />
