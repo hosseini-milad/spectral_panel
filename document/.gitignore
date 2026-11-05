@@ -1,6 +1,0 @@
-# Generated documents stay local; retain the layout and its documentation.
-*
-!*/
-!.gitkeep
-!README.md
-!.gitignore
