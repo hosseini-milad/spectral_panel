@@ -1,11 +1,9 @@
 import {
   LayoutDashboard,
   CalendarDays,
-  Database,
   Workflow,
   ListTodo,
   ChartNoAxesCombined,
-  Files,
   BrainCircuit,
   Settings2,
 } from "lucide-react";
@@ -26,13 +24,6 @@ export const navigation = [
     description: "انتخاب روز و چانک، بررسی پوشش داده و مراحل پردازش.",
   },
   {
-    path: "/data",
-    label: "مرور داده‌ها",
-    group: "workspace",
-    icon: Database,
-    description: "جست‌وجو، فیلتر و مشاهدهٔ جزئیات داده‌ها.",
-  },
-  {
     path: "/operations",
     label: "عملیات و پردازش",
     group: "analysis",
@@ -48,17 +39,10 @@ export const navigation = [
   },
   {
     path: "/visualizations",
-    label: "تصویر و نمودار",
+    label: "گزارش",
     group: "analysis",
     icon: ChartNoAxesCombined,
     description: "درخواست نمودار برای انتخاب فعلی و مرور خروجی‌های پیشین.",
-  },
-  {
-    path: "/reports",
-    label: "گزارش‌ها",
-    group: "analysis",
-    icon: Files,
-    description: "بررسی و مقایسهٔ نتایج از سطح روز تا گره و فرامولفه.",
   },
   {
     path: "/models",
