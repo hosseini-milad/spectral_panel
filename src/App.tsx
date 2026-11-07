@@ -11,6 +11,7 @@ import { OverviewPage } from "./pages/OverviewPage";
 import { OperationsPage } from "./pages/OperationsPage";
 import { ModelsPage } from "./pages/ModelsPage";
 
+import { JobsPage } from "./pages/JobsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 
 export function App() {
@@ -95,7 +96,9 @@ export function App() {
           menuOpen={menuOpen}
           onMenu={() => setMenuOpen(true)}
         />
-        {pathname === "/settings" ? (
+        {pathname === "/jobs" ? (
+          <JobsPage />
+        ) : pathname === "/settings" ? (
           <SettingsPage />
         ) : pathname === "/models" ? (
           <ModelsPage />

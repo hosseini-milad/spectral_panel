@@ -154,7 +154,7 @@ export function VisualizationsPage() {
       <div className="page-heading viz-page-heading">
         <div>
           <p className="eyebrow">تحلیل و پردازش / کاوش بصری</p>
-          <h1>تصاویر و نمودارها</h1>
+          <h1>گزارش</h1>
           <p className="page-description">
             روز را انتخاب کنید، الگوها را ببینید و روی جزئیات دقیق‌تر شوید.
           </p>
