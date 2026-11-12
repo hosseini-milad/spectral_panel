@@ -3,6 +3,9 @@ import { Image, Download, RotateCw, X } from "lucide-react";
 import {
   apiPath,
   createSchematic,
+  createDailySchematic,
+  type SchematicResult,
+  type DailySchematicResult,
   getJSON,
   type InventoryDay,
   type InventoryChunk,
@@ -17,14 +20,53 @@ const requests = new Map<string, { key: string; job?: SchematicJob }>();
 const active = (job: SchematicJob) =>
   job.status === "queued" || job.status === "running";
 
+function metricRows(
+  result: SchematicResult | DailySchematicResult,
+): ReadonlyArray<readonly [string, number | null]> {
+  if (result.kind === "day")
+    return [
+      ["مولفهٔ ورودی", result.metrics.input_components],
+      ["فرامولفه", result.metrics.meta_components],
+      ["نمایندهٔ روزانه", result.metrics.daily_representatives],
+      ["مشاهدهٔ کاندید", result.metrics.candidate_nodes],
+      ["یال شباهت مولفه‌ها", result.metrics.component_similarity_edges],
+      ["یال شباهت نماینده‌ها", result.metrics.representative_similarity_edges],
+      ["رابطهٔ عضویت", result.metrics.membership_links],
+      [
+        "مولفهٔ دارای نمایندهٔ روزانه",
+        result.metrics.components_with_daily_representatives,
+      ],
+      ["مولفهٔ ورودی منزوی", result.metrics.isolated_input_components],
+      ["انتساب ناموجود", result.metrics.unresolved_candidates],
+      ["پوشش شعاع (۰ تا ۱)", result.metrics.radius_coverage],
+    ];
+  return [
+    ["گره", result.metrics.nodes],
+    ["یال", result.metrics.edges],
+    ["نماینده", result.metrics.representatives],
+    ["مولفه", result.metrics.components],
+    ["مولفهٔ دارای نماینده", result.metrics.represented_components],
+    ["گره منزوی", result.metrics.isolated_nodes],
+    ["میانگین درجه", result.metrics.mean_degree],
+    ["تراکم (۰ تا ۱)", result.metrics.density],
+    ["کاهش نسبت به گراف (٪)", result.metrics.node_reduction_percent],
+  ];
+}
+
 export default function ChunkSchematic({
   day,
   chunk,
 }: {
   day: InventoryDay;
-  chunk: InventoryChunk;
+  chunk?: InventoryChunk;
 }) {
-  const identity = `${day.day}:${chunk.chunk_index}:${day.snapshot_id}`;
+  const identity = `${day.day}:${chunk?.chunk_index ?? "day"}:${day.snapshot_id}`;
+  const scopePath = chunk
+    ? `days/${day.day}/chunks/${chunk.chunk_index}/schematic/`
+    : `days/${day.day}/schematic/`;
+  const scopeTitle = chunk
+    ? `تصویر شماتیک چانک ${number(chunk.chunk_index)}`
+    : "تصویر شماتیک روز";
   const [job, setJob] = useState<SchematicJob | null>(
     () => requests.get(identity)?.job ?? null,
   );
@@ -51,7 +93,7 @@ export default function ChunkSchematic({
     };
   }, [open]);
   const submission = useRef<AbortController | null>(null);
-  const ready = Boolean(chunk.graph && chunk.representatives > 0);
+  const ready = !chunk || Boolean(chunk.graph && chunk.representatives > 0);
   useEffect(() => () => submission.current?.abort(), []);
 
   async function generate(fresh = false) {
@@ -68,13 +110,20 @@ export default function ChunkSchematic({
     setError("");
     setImageError(false);
     try {
-      const payload = await createSchematic(
-        day.day,
-        chunk.chunk_index,
-        day.snapshot_id,
-        record.key,
-        controller.signal,
-      );
+      const payload = await (chunk
+        ? createSchematic(
+            day.day,
+            chunk.chunk_index,
+            day.snapshot_id,
+            record.key,
+            controller.signal,
+          )
+        : createDailySchematic(
+            day.day,
+            day.snapshot_id,
+            record.key,
+            controller.signal,
+          ));
       if (!controller.signal.aborted) {
         record.job = payload.job;
         setJob(payload.job);
@@ -102,9 +151,7 @@ export default function ChunkSchematic({
     const poll = async () => {
       try {
         const next = await getJSON<SchematicJob>(
-          apiPath(
-            `days/${day.day}/chunks/${chunk.chunk_index}/schematic/jobs/${jobId}/`,
-          ),
+          apiPath(`${scopePath}jobs/${jobId}/`),
           controller.signal,
         );
         if (controller.signal.aborted) return;
@@ -133,7 +180,7 @@ export default function ChunkSchematic({
     jobStatus,
     identity,
     day.day,
-    chunk.chunk_index,
+    scopePath,
     pollAttempt,
     open,
     visible,
@@ -143,24 +190,26 @@ export default function ChunkSchematic({
   const matches =
     result &&
     result.day === day.day &&
-    result.chunk_index === chunk.chunk_index &&
+    (chunk
+      ? result.kind !== "day" && result.chunk_index === chunk.chunk_index
+      : result.kind === "day") &&
     job?.status === "succeeded" &&
     result.inventory_snapshot_id === day.snapshot_id &&
     result.layout === "global";
   return (
-    <section
-      className="chunk-schematic"
-      aria-label={`تصویر شماتیک چانک ${number(chunk.chunk_index)}`}
-    >
+    <section className="chunk-schematic" aria-label={scopeTitle}>
       <div className="report-heading">
         <div>
           <h3>
             <Image size={18} />
-            گراف و نماینده‌های انتخاب‌شده
+            {chunk
+              ? "گراف و نماینده‌های انتخاب‌شده"
+              : "مولفه‌ها، فرامولفه‌ها و نماینده‌های روزانه"}
           </h3>
           <p>
-            همهٔ گره‌های گراف ذخیره‌شده و نماینده‌ها در یک نمودار مشترک؛
-            نماینده‌ها با حاشیهٔ برجسته مشخص‌اند.
+            {chunk
+              ? "همهٔ گره‌های گراف ذخیره‌شده و نماینده‌ها در یک نمودار مشترک؛ نماینده‌ها با حاشیهٔ برجسته مشخص‌اند."
+              : "مولفه‌ها، فرامولفه‌ها و مشاهدات نماینده در یک نمودار؛ خطوط عضویت از یال‌های شباهت جدا هستند."}
           </p>
         </div>
         <button
@@ -190,7 +239,7 @@ export default function ChunkSchematic({
       <dialog
         ref={dialog}
         className="chunk-schematic-dialog"
-        aria-labelledby={`schematic-title-${day.day}-${chunk.chunk_index}`}
+        aria-labelledby={`schematic-title-${day.day}-${chunk?.chunk_index ?? "day"}`}
         onCancel={() => setOpen(false)}
         onClose={() => setOpen(false)}
         onClick={(event) => {
@@ -206,8 +255,8 @@ export default function ChunkSchematic({
         }}
       >
         <header className="chunk-schematic-dialog-heading">
-          <h2 id={`schematic-title-${day.day}-${chunk.chunk_index}`}>
-            تصویر شماتیک چانک {number(chunk.chunk_index)} · {day.day}
+          <h2 id={`schematic-title-${day.day}-${chunk?.chunk_index ?? "day"}`}>
+            {scopeTitle} · {day.day}
           </h2>
           <button
             className="icon-button"
@@ -285,7 +334,11 @@ export default function ChunkSchematic({
               <img
                 className="chunk-schematic-image"
                 src={result.image_url}
-                alt={`گراف چانک ${number(chunk.chunk_index)} در ${day.day} با ${number(result.metrics.representatives)} نمایندهٔ برجسته`}
+                alt={
+                  result.kind === "day"
+                    ? `شماتیک مولفه‌ها، فرامولفه‌ها و ${number(result.metrics.daily_representatives)} نمایندهٔ روز ${day.day}`
+                    : `گراف چانک ${number(chunk?.chunk_index)} در ${day.day} با ${number(result.metrics.representatives)} نمایندهٔ برجسته`
+                }
                 onError={() => setImageError(true)}
                 onLoad={() => setImageError(false)}
               />
@@ -307,32 +360,14 @@ export default function ChunkSchematic({
               </a>
             </div>
             <dl className="chunk-metrics">
-              {(
-                [
-                  ["گره", result.metrics.nodes],
-                  ["یال", result.metrics.edges],
-                  ["نماینده", result.metrics.representatives],
-                  ["مولفه", result.metrics.components],
-                  [
-                    "مولفهٔ دارای نماینده",
-                    result.metrics.represented_components,
-                  ],
-                  ["گره منزوی", result.metrics.isolated_nodes],
-                  ["میانگین درجه", result.metrics.mean_degree],
-                  ["تراکم (۰ تا ۱)", result.metrics.density],
-                  [
-                    "کاهش نسبت به گراف (٪)",
-                    result.metrics.node_reduction_percent,
-                  ],
-                ] as const
-              ).map(([label, value]) => (
+              {metricRows(result).map(([label, value]) => (
                 <div key={label}>
                   <dt>{label}</dt>
                   <dd>
                     {label === "تراکم (۰ تا ۱)"
                       ? new Intl.NumberFormat("fa-IR", {
                           maximumSignificantDigits: 4,
-                        }).format(value)
+                        }).format(value ?? 0)
                       : number(value)}
                   </dd>
                 </div>
@@ -340,16 +375,32 @@ export default function ChunkSchematic({
             </dl>
             <p className="chunk-detail-note">
               تولید: {observationTime(result.generated_at)} · چیدمان شماتیک
-              سراسری است؛ مولفه‌های جدا به هم وصل نشده‌اند. رنگ‌ها برچسب
-              ذخیره‌شده‌اند، نه پیش‌بینی حمله. مولفهٔ دارای نماینده، معیار پوشش
-              عضویت است و دقت تشخیص نیست.
+              سراسری است.{" "}
+              {result.kind === "day"
+                ? "دایره: مولفه؛ لوزی: فرامولفه؛ مثلث: نمایندهٔ روزانه. خط‌چین و نقطه‌چین رابطهٔ عضویت هستند، نه شباهت. رنگ‌ها عضویت گروهی‌اند و ممکن است تکرار شوند."
+                : "مولفه‌های جدا به هم وصل نشده‌اند. رنگ‌ها برچسب ذخیره‌شده‌اند، نه پیش‌بینی حمله."}{" "}
+              پوشش عضویت و شعاع، دقت تشخیص حمله نیستند.
             </p>
-            {result.metrics.unknown_label_nodes > 0 && (
+            {result.kind === "day" && (
               <p className="chunk-detail-note">
-                {number(result.metrics.unknown_label_nodes)} گره برچسب معتبر
-                ندارند و خاکستری نمایش داده می‌شوند.
+                نسخهٔ سلسله‌مراتب: <bdi>{result.hierarchy_run_id}</bdi> · نسخهٔ
+                نماینده‌های روزانه: <bdi>{result.representative_run_id}</bdi> ·
+                پوشش روز:{" "}
+                {result.coverage_status === "complete"
+                  ? "کامل"
+                  : result.coverage_status === "partial"
+                    ? "جزئی"
+                    : "تأییدنشده"}
+                . این تصویر مرحلهٔ علمی تازه‌ای نمی‌سازد.
               </p>
             )}
+            {result.kind !== "day" &&
+              result.metrics.unknown_label_nodes > 0 && (
+                <p className="chunk-detail-note">
+                  {number(result.metrics.unknown_label_nodes)} گره برچسب معتبر
+                  ندارند و خاکستری نمایش داده می‌شوند.
+                </p>
+              )}
           </>
         )}
         {job && !active(job) && (

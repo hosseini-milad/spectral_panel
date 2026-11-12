@@ -130,6 +130,7 @@ export function observationTime(value: string) {
 }
 
 export interface SchematicResult {
+  kind?: "chunk";
   schema_version: string;
   render_id: string;
   day: string;
@@ -158,6 +159,28 @@ export interface SchematicResult {
   png_download_url: string;
   svg_download_url: string;
 }
+export interface DailySchematicResult extends Omit<
+  SchematicResult,
+  "kind" | "chunk_index" | "component_revision" | "label_source" | "metrics"
+> {
+  kind: "day";
+  hierarchy_run_id: string;
+  representative_run_id: string;
+  coverage_status: string;
+  metrics: {
+    input_components: number;
+    meta_components: number;
+    daily_representatives: number;
+    candidate_nodes: number;
+    unresolved_candidates: number;
+    component_similarity_edges: number;
+    representative_similarity_edges: number;
+    membership_links: number;
+    components_with_daily_representatives: number;
+    isolated_input_components: number;
+    radius_coverage: number | null;
+  };
+}
 export interface SchematicJob {
   worker?: {
     online: boolean;
@@ -175,18 +198,18 @@ export interface SchematicJob {
   status_url: string;
   progress: { phase: string; percent: number | null };
   error: { code: string; detail: string } | null;
-  result: SchematicResult | null;
+  result: SchematicResult | DailySchematicResult | null;
 }
-export async function createSchematic(
-  day: string,
-  chunk: number,
+async function createSchematicRequest(
+  path: string,
+  daily: boolean,
   snapshot: string,
   key: string,
   signal: AbortSignal,
 ) {
   let response: Response;
   try {
-    response = await fetch(apiPath(`days/${day}/chunks/${chunk}/schematic/`), {
+    response = await fetch(apiPath(path), {
       method: "POST",
       signal,
       headers: {
@@ -207,7 +230,9 @@ export async function createSchematic(
     throw new ApiError(
       response.status,
       response.status === 409
-        ? "اطلاعات روز تغییر کرده یا گراف و نماینده‌های ذخیره‌شده آماده نیستند؛ روز را دوباره باز کنید."
+        ? daily
+          ? "نسخهٔ کامل و منطبق فرامولفه‌ها و نماینده‌های روزانه موجود نیست یا اطلاعات روز تغییر کرده است؛ ابتدا مراحل روزانه را تکمیل و روز را دوباره باز کنید."
+          : "اطلاعات روز تغییر کرده یا گراف و نماینده‌های ذخیره‌شده آماده نیستند؛ روز را دوباره باز کنید."
         : response.status === 404
           ? "چانک در فهرست سرور پیدا نشد."
           : "ثبت درخواست تصویر ممکن نشد. دوباره تلاش کنید.",
@@ -220,4 +245,34 @@ export async function createSchematic(
       "پاسخ ثبت درخواست قابل خواندن نیست؛ دوباره تلاش کنید.",
     );
   }
+}
+
+export function createSchematic(
+  day: string,
+  chunk: number,
+  snapshot: string,
+  key: string,
+  signal: AbortSignal,
+) {
+  return createSchematicRequest(
+    `days/${day}/chunks/${chunk}/schematic/`,
+    false,
+    snapshot,
+    key,
+    signal,
+  );
+}
+export function createDailySchematic(
+  day: string,
+  snapshot: string,
+  key: string,
+  signal: AbortSignal,
+) {
+  return createSchematicRequest(
+    `days/${day}/schematic/`,
+    true,
+    snapshot,
+    key,
+    signal,
+  );
 }

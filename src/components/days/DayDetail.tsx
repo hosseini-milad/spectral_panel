@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import {
   BarChart3,
   Download,
@@ -17,6 +17,8 @@ import {
   observationTime,
 } from "../../api/days";
 import { useApi } from "../../hooks/useApi";
+
+const DailySchematic = lazy(() => import("./ChunkSchematic"));
 
 export function DayDetail({ day: initialDay }: { day: InventoryDay }) {
   const resource = useApi<InventoryDay>(apiPath(`days/${initialDay.day}/`));
@@ -176,6 +178,15 @@ export function DayDetail({ day: initialDay }: { day: InventoryDay }) {
                 </p>
               </div>
             </div>
+            <Suspense
+              fallback={
+                <p className="chunk-detail-note">
+                  در حال آماده‌سازی نمایش روزانه…
+                </p>
+              }
+            >
+              <DailySchematic key={`${day.day}:${day.snapshot_id}`} day={day} />
+            </Suspense>
             <h4 className="report-section-title">پوشش مراحل پردازش</h4>
             <div className="report-stages">
               {stages.map((stage) => (
