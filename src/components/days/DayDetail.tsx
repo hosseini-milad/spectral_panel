@@ -7,30 +7,30 @@ import {
   AlertTriangle,
   Check,
 } from "lucide-react";
-import {
-  type ProcessingDay,
-  dateLabel,
-  number,
-  stages,
-  summarizeDay,
-} from "../../data/days";
+import { dateLabel, stages } from "../../data/days";
 import { ChunkTable } from "./ChunkTable";
+import {
+  apiPath,
+  type InventoryDay,
+  displayNumber as number,
+  inventorySummary as summarizeDay,
+  observationTime,
+} from "../../api/days";
+import { useApi } from "../../hooks/useApi";
 
-export function DayDetail({ day }: { day: ProcessingDay }) {
+export function DayDetail({ day: initialDay }: { day: InventoryDay }) {
+  const resource = useApi<InventoryDay>(apiPath(`days/${initialDay.day}/`));
+  const day = resource.data ?? initialDay;
   const [tab, setTab] = useState<"chunks" | "report">("chunks");
   const [exported, setExported] = useState(false);
   const summary = summarizeDay(day);
   function downloadReport() {
     const report = {
-      mock: true,
+      inventory_report: true,
       scientific_result: false,
-      day: day.date,
-      expected_chunks: day.expectedChunks,
-      source: day.source,
-      summary,
-      estimate_method:
-        "mean available chunk records multiplied by expected chunk count",
-      chunks: day.chunks,
+      day,
+      chunks_url: apiPath(`days/${day.day}/chunks/`),
+      note: "خلاصهٔ ذخیره‌شدهٔ روز؛ جزئیات چانک‌ها صفحه‌بندی می‌شود. شناسهٔ snapshot_id نسخهٔ دادهٔ فهرست است، نه شناسهٔ اجرای علمی.",
     };
     const url = URL.createObjectURL(
       new Blob([JSON.stringify(report, null, 2)], {
@@ -39,13 +39,26 @@ export function DayDetail({ day }: { day: ProcessingDay }) {
     );
     const link = document.createElement("a");
     link.href = url;
-    link.download = `mock-day-report-${day.date}.json`;
+    link.download = `day-inventory-report-${day.day}.json`;
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     setExported(true);
   }
+  if (resource.error)
+    return (
+      <div
+        className="day-detail"
+        id={`day-detail-${initialDay.day}`}
+        role="alert"
+      >
+        <p>{resource.error.message}</p>
+        <button className="days-text-button" onClick={resource.retry}>
+          تلاش دوباره
+        </button>
+      </div>
+    );
   return (
-    <div className="day-detail" id={`day-detail-${day.date}`}>
+    <div className="day-detail" id={`day-detail-${day.day}`}>
       <div className="day-quick-stats">
         <div>
           <span>دادهٔ نرمال‌شده</span>
@@ -55,21 +68,21 @@ export function DayDetail({ day }: { day: ProcessingDay }) {
           </strong>
         </div>
         <div>
-          <span>تکمیل تمام مراحل</span>
+          <span>تکمیل لایهٔ اول</span>
           <strong>
             {number(summary.complete)}
-            <small> از {number(day.expectedChunks)} چانک</small>
+            <small> از {number(day.expected_chunks)} چانک</small>
           </strong>
         </div>
         <div>
-          <span>برآورد رکورد کل روز</span>
-          <strong>≈ {number(summary.estimatedRecords)}</strong>
+          <span>رکورد خام کل روز</span>
+          <strong>{number(summary.records)}</strong>
         </div>
       </div>
       <div
         className="day-detail-tabs"
         role="tablist"
-        aria-label={`اطلاعات ${dateLabel(day.date)}`}
+        aria-label={`اطلاعات ${dateLabel(day.day)}`}
         onKeyDown={(event) => {
           if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key))
             return;
@@ -83,37 +96,37 @@ export function DayDetail({ day }: { day: ProcessingDay }) {
                   ? "report"
                   : "chunks";
           setTab(next);
-          document.getElementById(`${next}-tab-${day.date}`)?.focus();
+          document.getElementById(`${next}-tab-${day.day}`)?.focus();
         }}
       >
         <button
-          id={`chunks-tab-${day.date}`}
+          id={`chunks-tab-${day.day}`}
           role="tab"
           aria-selected={tab === "chunks"}
           tabIndex={tab === "chunks" ? 0 : -1}
-          aria-controls={`panel-${day.date}`}
+          aria-controls={`panel-${day.day}`}
           onClick={() => setTab("chunks")}
         >
           <Layers3 size={16} />
           چانک‌ها
         </button>
         <button
-          id={`report-tab-${day.date}`}
+          id={`report-tab-${day.day}`}
           role="tab"
           aria-selected={tab === "report"}
           tabIndex={tab === "report" ? 0 : -1}
-          aria-controls={`panel-${day.date}`}
+          aria-controls={`panel-${day.day}`}
           onClick={() => setTab("report")}
         >
           <FileText size={16} />
           گزارش روز
         </button>
-        <span className="detail-mock-note">دادهٔ نمایشی</span>
+        <span className="detail-mock-note">اطلاعات ثبت‌شده</span>
       </div>
       <div
         role="tabpanel"
-        id={`panel-${day.date}`}
-        aria-labelledby={`${tab}-tab-${day.date}`}
+        id={`panel-${day.day}`}
+        aria-labelledby={`${tab}-tab-${day.day}`}
         tabIndex={0}
       >
         {tab === "chunks" ? (
@@ -124,9 +137,9 @@ export function DayDetail({ day }: { day: ProcessingDay }) {
               <div>
                 <h3>
                   <BarChart3 size={18} />
-                  گزارش {dateLabel(day.date)}
+                  گزارش {dateLabel(day.day)}
                 </h3>
-                <p>جمع‌بندی همین روز بر اساس چانک‌های موجود در ماک</p>
+                <p>جمع‌بندی همین روز بر اساس اطلاعات ثبت‌شدهٔ سرور</p>
               </div>
               <button className="days-button" onClick={downloadReport}>
                 <Download size={15} />
@@ -147,75 +160,73 @@ export function DayDetail({ day }: { day: ProcessingDay }) {
                 <h4>
                   {summary.failed
                     ? `${number(summary.failed)} چانک نیازمند بررسی است`
-                    : summary.complete === day.expectedChunks
-                      ? "پردازش همهٔ چانک‌ها تکمیل شده است"
+                    : summary.complete === day.expected_chunks
+                      ? "لایهٔ اول همهٔ چانک‌ها تکمیل شده است"
                       : "پردازش روز هنوز کامل نشده است"}
                 </h4>
                 <p>
-                  {summary.missing
-                    ? `${number(summary.missing)} چانک از ورودی روز در دسترس نیست. `
-                    : "تمام پارتیشن‌های مورد انتظار در دسترس‌اند. "}
+                  {summary.missing == null
+                    ? "تعداد پارتیشن‌های مورد انتظار مشخص نیست. "
+                    : summary.missing
+                      ? `${number(summary.missing)} چانک از ورودی روز در دسترس نیست. `
+                      : "تمام پارتیشن‌های مورد انتظار در دسترس‌اند. "}
                   {summary.running
-                    ? `${number(summary.running)} چانک در وضعیت پردازش نمونه است.`
-                    : "وضعیت‌ها فقط برای نمایش رابط کاربری هستند."}
+                    ? `${number(summary.running)} چانک دارای نشانگر پردازش است.`
+                    : "این خلاصه، وضعیت زندهٔ worker یا نتیجهٔ تشخیص حمله نیست."}
                 </p>
               </div>
             </div>
             <h4 className="report-section-title">پوشش مراحل پردازش</h4>
             <div className="report-stages">
-              {stages.map((stage, index) => {
-                const count = day.chunks.filter(
-                  (chunk) => chunk.completedStages > index,
-                ).length;
-                return (
-                  <div key={stage}>
-                    <span>{stage}</span>
-                    <progress
-                      value={count}
-                      max={day.expectedChunks}
-                      aria-label={`پوشش ${stage}`}
-                    />
-                    <strong>
-                      {number(count)} / {number(day.expectedChunks)}
-                    </strong>
-                  </div>
-                );
-              })}
+              {stages.map((stage) => (
+                <div key={stage}>
+                  <span>{stage}</span>
+                  <progress
+                    value={0}
+                    max={day.expected_chunks ?? 1}
+                    aria-label={`شمارش تکمیل مرحلهٔ ${stage} در API گزارش نشده است`}
+                  />
+                  <strong>— / {number(day.expected_chunks)}</strong>
+                </div>
+              ))}
             </div>
             <details className="report-method">
-              <summary>منبع داده و روش برآورد</summary>
+              <summary>منبع داده و زمان مشاهده</summary>
               <dl>
                 <div>
-                  <dt>فایل نمونه</dt>
-                  <dd dir="ltr">{day.source}</dd>
+                  <dt>منبع اطلاعات</dt>
+                  <dd dir="ltr">processing_days</dd>
                 </div>
                 <div>
                   <dt>پوشش ورودی</dt>
                   <dd>
-                    {number(day.chunks.length)} از {number(day.expectedChunks)}{" "}
-                    چانک ({number(summary.coverage)}٪)
+                    {number(day.observed_chunks)} از{" "}
+                    {number(day.expected_chunks)} چانک (
+                    {number(summary.coverage)}
+                    {summary.coverage == null ? "" : "٪"})
                   </dd>
                 </div>
                 <div>
                   <dt>حجم تقریبی</dt>
                   <dd>
-                    {number(summary.volumeMB)} مگابایت، با فرض ۳۱۲ بایت برای هر
-                    رکورد
+                    {summary.volumeMB == null
+                      ? "اندازه‌گیری نشده"
+                      : `${number(summary.volumeMB)} مگابایت`}
                   </dd>
                 </div>
               </dl>
               <p>
-                برآورد کل روز = میانگین رکورد خام چانک‌های موجود × تعداد چانک
-                مورد انتظار. این تخمین فرض می‌کند اندازهٔ پارتیشن‌ها نزدیک است و
-                تضمین کامل‌بودن داده نیست. چانک‌های ناموجود در پیشرفت کل، صفر در
-                نظر گرفته می‌شوند. این گزارش ماک است و نتیجهٔ علمی یا تشخیص حمله
-                محسوب نمی‌شود.
+                اطلاعات از کالکشن روزها خوانده شده است؛ حجم، زمان اجرا، درصد
+                پیشرفت و شمارش تکمیل تک‌تک مراحل در این API گزارش نمی‌شوند.
+                آخرین مشاهده: {observationTime(day.updated_at)}. شناسهٔ نسخهٔ
+                فهرست: {day.snapshot_id}. پوشش چانک با دقت تشخیص حمله تفاوت
+                دارد.
               </p>
             </details>
             <p className="export-feedback" role="status">
               {exported
-                ? "فایل گزارش ماک برای دانلود آماده شد."
-                : "خروجی شامل تاریخ، منبع، پارامترهای برآورد، شناسه‌های اجرای نمونه و جزئیات چانک‌هاست."}
+                ? "فایل خلاصهٔ ثبت‌شده برای دانلود آماده شد."
+                : "خروجی شامل خلاصهٔ روز، شناسهٔ نسخه و نشانی دریافت صفحه‌بندی‌شدهٔ چانک‌هاست."}
             </p>
           </div>
         )}

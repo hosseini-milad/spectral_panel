@@ -1,6 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { mockDays, mockSnapshotDate, number, utcDate } from "../../data/days";
+
+import { apiPath, type Page, type InventoryDay } from "../../api/days";
+import { useApi } from "../../hooks/useApi";
 
 function persianParts(date: Date) {
   const parts = new Intl.DateTimeFormat("en-US-u-ca-persian", {
@@ -28,11 +31,18 @@ function iso(date: Date) {
 export function PersianCalendar({
   selectedDate,
   onSelect,
+  live = false,
+  latestDate,
 }: {
   selectedDate: string;
   onSelect: (date: string) => void;
+  live?: boolean;
+  latestDate?: string;
 }) {
   const [month, setMonth] = useState(() => monthStart(utcDate(selectedDate)));
+  useEffect(() => {
+    setMonth(monthStart(utcDate(selectedDate)));
+  }, [selectedDate]);
   const start = monthStart(month);
   let next = addDays(start, 29);
   while (persianParts(next).month === persianParts(start).month)
@@ -44,7 +54,20 @@ export function PersianCalendar({
     month: "long",
     year: "numeric",
   }).format(start);
-  const hasData = new Set(mockDays.map((day) => day.date));
+  const dates = useApi<Page<InventoryDay>>(
+    live
+      ? apiPath("days/", {
+          date_from: iso(start),
+          date_to: iso(addDays(next, -1)),
+          limit: 100,
+        })
+      : null,
+  );
+  const hasData = new Set(
+    live
+      ? (dates.data?.results.map((day) => day.day) ?? [])
+      : mockDays.map((day) => day.date),
+  );
 
   return (
     <section className="days-card calendar-card" aria-label="تقویم انتخاب روز">
@@ -103,21 +126,29 @@ export function PersianCalendar({
       <div className="calendar-legend">
         <span>
           <i />
-          دارای دادهٔ ماک
+          {live ? "دارای اطلاعات ثبت‌شده" : "دارای دادهٔ ماک"}
         </span>
         <button
           type="button"
           onClick={() => {
-            setMonth(monthStart(utcDate(mockSnapshotDate)));
-            onSelect(mockSnapshotDate);
+            const target = live ? latestDate : mockSnapshotDate;
+            if (target) {
+              setMonth(monthStart(utcDate(target)));
+              onSelect(target);
+            }
           }}
         >
-          آخرین روز نمونه
+          {live ? "آخرین روز موجود" : "آخرین روز نمونه"}
         </button>
       </div>
       <p className="calendar-caption">
-        نقطه‌های تقویم، روزهای موجود در نمونه را نشان می‌دهند؛ برای سایر روزها
-        داده‌ای ثبت نشده است.
+        {live
+          ? dates.loading
+            ? "در حال دریافت روزهای این ماه…"
+            : dates.error
+              ? "دریافت روزهای تقویم ممکن نشد؛ از فهرست روزها استفاده کنید."
+              : "نقطه‌ها روزهای ثبت‌شدهٔ همین ماه در سرور را نشان می‌دهند."
+          : "نقطه‌های تقویم، روزهای موجود در نمونه را نشان می‌دهند؛ برای سایر روزها داده‌ای ثبت نشده است."}
       </p>
     </section>
   );

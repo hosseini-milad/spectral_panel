@@ -1,6 +1,6 @@
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { dayDetailsPath, isISODate } from "../lib/dayNavigation";
+import { isISODate } from "../lib/dayNavigation";
 import {
   CalendarDays,
   Database,
@@ -13,22 +13,99 @@ import {
   CalendarSearch,
   Info,
 } from "lucide-react";
-import {
-  mockDays,
-  mockSnapshotDate,
-  number,
-  dateLabel,
-  dayStatusLabels,
-  normalizeSearch,
-  summarizeDay,
-} from "../data/days";
+import { dateLabel, dayStatusLabels } from "../data/days";
 import { PersianCalendar } from "../components/days/PersianCalendar";
 import { DayDetail } from "../components/days/DayDetail";
 import "./days.css";
 
+import {
+  apiPath,
+  type InventoryDay,
+  type Page,
+  displayNumber as number,
+  inventorySummary as summarizeDay,
+  observationTime,
+} from "../api/days";
+import { useApi, useDebounced } from "../hooks/useApi";
+import { daySearch } from "../lib/daySearch";
+
 export function DaysPage() {
   const [params, setParams] = useSearchParams();
   const requested = params.get("day");
+  const latest = useApi<Page<InventoryDay>>(apiPath("days/", { limit: 1 }));
+  const selectedDate =
+    requested && isISODate(requested)
+      ? requested
+      : (latest.data?.results[0]?.day ?? new Date().toISOString().slice(0, 10));
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("all");
+  const [page, setPage] = useState(0);
+  const [calendarKey, setCalendarKey] = useState(0);
+  const [selectedOnly, setSelectedOnly] = useState(Boolean(requested));
+  const debouncedSearch = useDebounced(search);
+  let searchQuery: Record<string, string> = {};
+  let searchError = "";
+  try {
+    searchQuery = daySearch(debouncedSearch);
+  } catch (error) {
+    searchError = (error as Error).message;
+  }
+  const pageSize = 5;
+  const listPath = apiPath("days/", {
+    limit: pageSize,
+    offset: page * pageSize,
+    status: status === "all" ? undefined : status,
+    ...(selectedOnly && !debouncedSearch
+      ? { date_from: selectedDate, date_to: selectedDate }
+      : searchQuery),
+  });
+  const list = useApi<Page<InventoryDay>>(searchError ? null : listPath);
+  const detail = useApi<InventoryDay>(
+    requested && !isISODate(requested)
+      ? null
+      : apiPath(`days/${selectedDate}/`),
+  );
+  const visible = list.data?.results ?? [];
+  const filteredCount = list.data?.count ?? 0;
+  const pageCount = Math.ceil(filteredCount / pageSize);
+  const selected = detail.data;
+  const totalRecords = visible.reduce((sum, day) => sum + day.raw_records, 0);
+  const totalChunks = visible.reduce(
+    (sum, day) => sum + day.observed_chunks,
+    0,
+  );
+  const completedDays = visible.filter(
+    (day) => day.status === "complete",
+  ).length;
+  useEffect(() => {
+    setExpanded(selectedDate);
+  }, [selectedDate]);
+  useEffect(() => {
+    if (list.data && page > 0 && page * pageSize >= list.data.count)
+      setPage(Math.max(0, Math.ceil(list.data.count / pageSize) - 1));
+  }, [list.data, page]);
+
+  function setDate(date: string) {
+    setParams((previous) => {
+      const next = new URLSearchParams(previous);
+      next.set("day", date);
+      return next;
+    });
+  }
+  function selectDate(date: string) {
+    setDate(date);
+    setExpanded(date);
+    setSelectedOnly(true);
+    setSearch("");
+    setStatus("all");
+    setPage(0);
+  }
+  function toggleDay(date: string) {
+    setDate(date);
+    setExpanded(expanded === date ? null : date);
+    setCalendarKey((key) => key + 1);
+  }
   if (requested !== null && !isISODate(requested)) {
     return (
       <main id="main-content" className="main-content days-page" tabIndex={-1}>
@@ -42,94 +119,13 @@ export function DaysPage() {
           <CalendarSearch size={30} />
           <h2>تاریخ آدرس معتبر نیست</h2>
           <p>پارامتر day باید تاریخ معتبر میلادی با قالب YYYY-MM-DD باشد.</p>
-          <Link
-            className="days-text-button"
-            to={dayDetailsPath(mockSnapshotDate)}
-          >
-            مشاهدهٔ آخرین روز نمونه
+          <Link className="days-text-button" to="/days">
+            مشاهدهٔ روزهای موجود
             <ArrowUpLeft size={15} />
           </Link>
         </div>
       </main>
     );
-  }
-  const initialDate = requested ?? mockSnapshotDate;
-  return (
-    <DaysExplorer
-      key={initialDate}
-      initialDate={initialDate}
-      onDateChange={(date) => {
-        if (params.get("day") === date) return;
-        setParams((previous) => {
-          const next = new URLSearchParams(previous);
-          next.set("day", date);
-          return next;
-        });
-      }}
-    />
-  );
-}
-
-function DaysExplorer({
-  initialDate,
-  onDateChange,
-}: {
-  initialDate: string;
-  onDateChange: (date: string) => void;
-}) {
-  const selectedDate = initialDate;
-  const [expanded, setExpanded] = useState<string | null>(initialDate);
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("all");
-  const [page, setPage] = useState(() =>
-    Math.max(
-      0,
-      Math.floor(mockDays.findIndex((day) => day.date === initialDate) / 5),
-    ),
-  );
-  const [calendarKey, setCalendarKey] = useState(0);
-  const filtered = mockDays.filter(
-    (day) =>
-      (status === "all" || summarizeDay(day).status === status) &&
-      normalizeSearch(
-        `${day.date} ${dateLabel(day.date, true)} ${new Intl.DateTimeFormat("fa-IR", { timeZone: "UTC", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(`${day.date}T12:00:00Z`))}`,
-      ).includes(normalizeSearch(search)),
-  );
-  const pageSize = 5;
-  const pageCount = Math.ceil(filtered.length / pageSize);
-  const visible = filtered.slice(page * pageSize, (page + 1) * pageSize);
-  const selected = mockDays.find((day) => day.date === selectedDate);
-  const totalRecords = mockDays.reduce(
-    (sum, day) => sum + summarizeDay(day).records,
-    0,
-  );
-  const totalChunks = mockDays.reduce((sum, day) => sum + day.chunks.length, 0);
-  const completedDays = mockDays.filter(
-    (day) => summarizeDay(day).status === "complete",
-  ).length;
-
-  function selectDate(date: string) {
-    // A different day is rendered only after the router commits its URL.
-    // Updating local selection first can race a quick Back/Forward action.
-    if (date !== initialDate) {
-      onDateChange(date);
-      return;
-    }
-    onDateChange(date);
-    setExpanded(date);
-    setSearch("");
-    setStatus("all");
-    const index = mockDays.findIndex((day) => day.date === date);
-    setPage(index < 0 ? 0 : Math.floor(index / pageSize));
-  }
-  function toggleDay(date: string) {
-    if (date !== initialDate) {
-      onDateChange(date);
-      return;
-    }
-    onDateChange(date);
-    setExpanded(expanded === date ? null : date);
-    setCalendarKey((key) => key + 1);
   }
   return (
     <main id="main-content" className="main-content days-page" tabIndex={-1}>
@@ -143,46 +139,48 @@ function DaysExplorer({
         </div>
         <span className="mock-badge">
           <FlaskConical size={15} />
-          نسخهٔ ماک
+          اطلاعات سرور
         </span>
       </div>
       <div className="days-notice">
         <Info size={16} />
         <span>
-          همهٔ داده‌ها، وضعیت‌ها و برآوردهای این صفحه نمایشی‌اند. هیچ پردازش
-          واقعی اجرا نمی‌شود.
+          اطلاعات ثبت‌شدهٔ روزها و چانک‌ها از سرور دریافت می‌شود؛ تکمیل پردازش
+          در این صفحه مربوط به لایهٔ اول است.
         </span>
         <span className="snapshot-label">
-          نمونه تا {dateLabel(mockSnapshotDate)}
+          {selected
+            ? `به‌روزرسانی ${observationTime(selected.updated_at)}`
+            : "فهرست ثبت‌شده در سرور"}
         </span>
       </div>
-      <section className="days-overview" aria-label="خلاصهٔ روزهای نمونه">
+      <section className="days-overview" aria-label="خلاصهٔ روزها">
         {[
           {
             label: "روزهای موجود",
-            value: number(mockDays.length),
-            detail: "در مجموعهٔ نمونه",
+            value: number(latest.data?.count),
+            detail: "در فهرست سرور",
             icon: CalendarDays,
             tone: "green",
           },
           {
             label: "رکوردهای خام",
-            value: number(totalRecords),
-            detail: "مجموع روزهای نمونه",
+            value: list.data ? number(totalRecords) : "—",
+            detail: "مجموع روزهای این صفحه",
             icon: Database,
             tone: "blue",
           },
           {
             label: "چانک‌های موجود",
-            value: number(totalChunks),
-            detail: "پارتیشن‌های ورودی",
+            value: list.data ? number(totalChunks) : "—",
+            detail: "روزهای این صفحه",
             icon: Layers3,
             tone: "purple",
           },
           {
             label: "روزهای تکمیل‌شده",
-            value: number(completedDays),
-            detail: `از ${number(mockDays.length)} روز نمونه`,
+            value: list.data ? number(completedDays) : "—",
+            detail: `در ${number(visible.length)} روز این صفحه`,
             icon: CircleCheck,
             tone: "amber",
           },
@@ -208,7 +206,7 @@ function DaysExplorer({
             <div>
               <h2 id="recent-days-title">
                 روزهای اخیر{" "}
-                <span className="count-badge">{number(mockDays.length)}</span>
+                <span className="count-badge">{number(list.data?.count)}</span>
               </h2>
               <p>برای مشاهدهٔ چانک‌ها و گزارش، یک روز را باز کنید.</p>
             </div>
@@ -223,6 +221,7 @@ function DaysExplorer({
                 value={search}
                 onChange={(event) => {
                   setSearch(event.target.value);
+                  setSelectedOnly(false);
                   setPage(0);
                 }}
               />
@@ -232,6 +231,7 @@ function DaysExplorer({
               value={status}
               onChange={(event) => {
                 setStatus(event.target.value);
+                setSelectedOnly(false);
                 setPage(0);
               }}
             >
@@ -243,7 +243,7 @@ function DaysExplorer({
               ))}
             </select>
           </div>
-          {!selected && (
+          {detail.error?.status === 404 && (
             <div className="no-day-data" role="status">
               <CalendarSearch size={25} />
               <div>
@@ -273,21 +273,21 @@ function DaysExplorer({
               <tbody>
                 {visible.map((day) => {
                   const summary = summarizeDay(day);
-                  const isOpen = expanded === day.date;
+                  const isOpen = expanded === day.day;
                   return (
-                    <Fragment key={day.date}>
+                    <Fragment key={day.day}>
                       <tr
-                        className={`day-row${selectedDate === day.date ? " selected-day" : ""}`}
-                        onClick={() => toggleDay(day.date)}
+                        className={`day-row${selectedDate === day.day ? " selected-day" : ""}`}
+                        onClick={() => toggleDay(day.day)}
                       >
                         <th scope="row">
                           <button
                             className="day-select"
                             aria-expanded={isOpen}
                             aria-controls={
-                              isOpen ? `day-detail-${day.date}` : undefined
+                              isOpen ? `day-detail-${day.day}` : undefined
                             }
-                            aria-label={`${isOpen ? "بستن" : "مشاهده"} روز ${dateLabel(day.date)}`}
+                            aria-label={`${isOpen ? "بستن" : "مشاهده"} روز ${dateLabel(day.day)}`}
                           >
                             <span
                               className={`day-calendar-icon${isOpen ? " chosen" : ""}`}
@@ -295,14 +295,14 @@ function DaysExplorer({
                               <CalendarDays size={19} />
                             </span>
                             <span>
-                              {dateLabel(day.date)}
+                              {dateLabel(day.day)}
                               <small>
                                 {new Intl.DateTimeFormat("fa-IR", {
                                   weekday: "long",
                                   timeZone: "UTC",
-                                }).format(new Date(`${day.date}T12:00:00Z`))}
+                                }).format(new Date(`${day.day}T12:00:00Z`))}
                                 <span className="date-divider">·</span>
-                                <bdi>{day.date}</bdi>
+                                <bdi>{day.day}</bdi>
                               </small>
                             </span>
                           </button>
@@ -310,18 +310,24 @@ function DaysExplorer({
                         <td className="numeric-cell">
                           {number(summary.records)}
                           <small className="cell-caption">
-                            ≈ {number(summary.volumeMB)} مگابایت
+                            {summary.volumeMB == null
+                              ? "حجم اندازه‌گیری نشده"
+                              : `${number(summary.volumeMB)} مگابایت`}
                           </small>
                         </td>
                         <td>
                           <span className="coverage-value">
-                            {number(day.chunks.length)}{" "}
-                            <small>از {number(day.expectedChunks)}</small>
+                            {number(day.observed_chunks)}{" "}
+                            <small>از {number(day.expected_chunks)}</small>
                           </span>
                           <progress
-                            value={day.chunks.length}
-                            max={day.expectedChunks}
-                            aria-label={`پوشش ورودی ${dateLabel(day.date)}`}
+                            value={
+                              day.expected_chunks == null
+                                ? undefined
+                                : day.observed_chunks
+                            }
+                            max={day.expected_chunks ?? 1}
+                            aria-label={`پوشش ورودی ${dateLabel(day.day)}`}
                           />
                         </td>
                         <td>
@@ -340,7 +346,7 @@ function DaysExplorer({
                       {isOpen && (
                         <tr className="day-expanded-row">
                           <td colSpan={5}>
-                            <DayDetail key={day.date} day={day} />
+                            <DayDetail key={day.day} day={day} />
                           </td>
                         </tr>
                       )}
@@ -351,16 +357,30 @@ function DaysExplorer({
                   <tr>
                     <td className="table-empty" colSpan={5}>
                       <Search size={25} />
-                      <strong>روزی با این فیلتر پیدا نشد.</strong>
+                      <strong
+                        role={list.error || searchError ? "alert" : "status"}
+                      >
+                        {searchError ||
+                          list.error?.message ||
+                          (list.loading || search !== debouncedSearch
+                            ? "در حال دریافت روزها…"
+                            : "روزی با این فیلتر پیدا نشد.")}
+                      </strong>
                       <button
                         className="days-text-button"
                         onClick={() => {
-                          setSearch("");
-                          setStatus("all");
-                          setPage(0);
+                          list.retry();
+                          latest.retry();
+                          detail.retry();
+                          if (!list.error) {
+                            setSearch("");
+                            setSelectedOnly(false);
+                            setStatus("all");
+                            setPage(0);
+                          }
                         }}
                       >
-                        پاک‌کردن فیلترها
+                        {list.error ? "تلاش دوباره" : "نمایش همهٔ روزها"}
                       </button>
                     </td>
                   </tr>
@@ -370,19 +390,24 @@ function DaysExplorer({
           </div>
           <div className="table-pagination">
             <span>
-              {number(filtered.length)} روز
+              {number(filteredCount)} روز
               {pageCount > 0 &&
                 ` · صفحهٔ ${number(page + 1)} از ${number(pageCount)}`}
             </span>
             <div>
               <button
                 aria-label="صفحهٔ قبلی روزها"
-                disabled={page === 0}
+                disabled={page === 0 || list.loading}
                 onClick={() => setPage(page - 1)}
               >
                 قبلی
               </button>
-              {Array.from({ length: pageCount }, (_, index) => (
+              {Array.from(
+                { length: Math.min(pageCount, 5) },
+                (_, offset) =>
+                  Math.min(Math.max(0, page - 2), Math.max(0, pageCount - 5)) +
+                  offset,
+              ).map((index) => (
                 <button
                   key={index}
                   className={page === index ? "current-page" : ""}
@@ -395,7 +420,7 @@ function DaysExplorer({
               ))}
               <button
                 aria-label="صفحهٔ بعدی روزها"
-                disabled={page + 1 >= pageCount}
+                disabled={page + 1 >= pageCount || list.loading}
                 onClick={() => setPage(page + 1)}
               >
                 بعدی
@@ -408,6 +433,8 @@ function DaysExplorer({
             key={calendarKey}
             selectedDate={selectedDate}
             onSelect={selectDate}
+            live
+            latestDate={latest.data?.results[0]?.day}
           />
           <section className="days-card selection-card">
             <div className="selection-label">
@@ -422,11 +449,14 @@ function DaysExplorer({
               <>
                 <div className="selection-coverage">
                   <span>پوشش ورودی</span>
-                  <strong>{number(summarizeDay(selected).coverage)}٪</strong>
+                  <strong>
+                    {number(summarizeDay(selected).coverage)}
+                    {selected.chunk_coverage_percent == null ? "" : "٪"}
+                  </strong>
                 </div>
                 <progress
                   max={100}
-                  value={summarizeDay(selected).coverage}
+                  value={summarizeDay(selected).coverage ?? undefined}
                   aria-label="پوشش ورودی روز انتخاب‌شده"
                 />
                 <div className="selection-facts">
@@ -454,7 +484,11 @@ function DaysExplorer({
               </>
             ) : (
               <p className="selection-empty">
-                داده‌ای برای این روز در نمونه نیست.
+                {detail.loading
+                  ? "در حال دریافت اطلاعات روز…"
+                  : detail.error?.status === 404
+                    ? "داده‌ای برای این روز ثبت نشده است."
+                    : (detail.error?.message ?? "اطلاعات روز در دسترس نیست.")}
               </p>
             )}
           </section>
