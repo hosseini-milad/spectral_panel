@@ -1342,3 +1342,12 @@
 .chunk-schematic { margin-block: 1.5rem; min-width: 0; }
 .chunk-schematic-image { display: block; width: 100%; height: auto; margin-block: 1rem; border-radius: 8px; }
 .chunk-schematic .table-controls { flex-wrap: wrap; margin-block: 1rem; }
+
+.chunk-schematic-dialog { width: min(1200px, calc(100vw - 32px)); max-height: 90dvh; box-sizing: border-box; padding: 20px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--text); overflow: auto; }
+.chunk-schematic-dialog::backdrop { background: rgb(0 0 0 / 60%); }
+.chunk-schematic-dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.chunk-schematic-dialog-heading h2 { font-size: 16px; margin: 0; }
+.chunk-schematic-dialog .table-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-block: 16px; }
+.chunk-schematic-dialog .chunk-schematic-image { margin-block: 16px; }
+@media (max-width: 600px) { .chunk-schematic-dialog { padding: 12px; width: calc(100vw - 16px); } }
+.chunk-schematic-dialog-heading { position: sticky; top: 0; z-index: 1; background: var(--surface); padding-bottom: 10px; border-bottom: 1px solid var(--line); }

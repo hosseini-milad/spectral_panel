@@ -159,6 +159,15 @@ export interface SchematicResult {
   svg_download_url: string;
 }
 export interface SchematicJob {
+  worker?: {
+    online: boolean;
+    busy: boolean;
+    heartbeat_age_seconds: number | null;
+  };
+  queue_position?: number | null;
+  queued_seconds?: number;
+  running_seconds?: number | null;
+  poll_after_seconds?: number | null;
   id: string;
   render_id: string;
   status:

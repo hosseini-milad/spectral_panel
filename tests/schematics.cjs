@@ -104,6 +104,8 @@ const result = {
     mismatch = false,
     failJob = false;
   const keys = [];
+  let holdQueue = true;
+  const pollTimes = [];
   await page.context().route("**/api/v1/days/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === root && route.request().method() === "POST") {
@@ -120,6 +122,18 @@ const result = {
       });
     }
     if (url.pathname === statusUrl) {
+      pollTimes.push(Date.now());
+      if (holdQueue)
+        return route.fulfill({
+          json: {
+            ...queued,
+            worker: { online: false, busy: false, heartbeat_age_seconds: null },
+            queue_position: 1,
+            queued_seconds: 190,
+            running_seconds: null,
+            poll_after_seconds: 10,
+          },
+        });
       pollCount++;
       if (pollCount === 1)
         return route.fulfill({
@@ -197,6 +211,39 @@ const result = {
   await page
     .getByText("درخواست ثبت شد و در صف رسم است.", { exact: false })
     .waitFor();
+  const popup = page.getByRole("dialog", { name: /تصویر شماتیک چانک/ });
+  await popup.waitFor();
+  await popup
+    .getByRole("status")
+    .filter({ hasText: "سرویس رسم فعال نیست" })
+    .waitFor();
+  const offlinePolls = pollTimes.length;
+  await page.waitForTimeout(2200);
+  assert.equal(
+    pollTimes.length,
+    offlinePolls,
+    "offline queue must not poll every second",
+  );
+  await page
+    .getByRole("button", { name: "بستن تصویر شماتیک", exact: true })
+    .click();
+  await popup.waitFor({ state: "hidden" });
+  assert.notEqual(
+    await page.evaluate(() => document.body.style.overflow),
+    "hidden",
+  );
+  await page.waitForTimeout(2200);
+  assert.equal(
+    pollTimes.length,
+    offlinePolls,
+    "closed popup must stop polling",
+  );
+  holdQueue = false;
+  await page
+    .getByRole("button", { name: "نمایش وضعیت تصویر", exact: true })
+    .click();
+  await popup.waitFor();
+  assert.equal(postCount, 2, "reopening status must not submit another render");
   await page.locator(".chunk-schematic-image").waitFor();
   await page.waitForFunction(
     () => document.querySelector(".chunk-schematic-image")?.naturalWidth > 0,
@@ -208,6 +255,15 @@ const result = {
     /میانگین درجه/,
   );
   assert.equal(await page.locator(".chunk-schematic-image").count(), 1);
+  assert(await popup.locator(".chunk-schematic-image").isVisible());
+  await page.keyboard.press("Escape");
+  await popup.waitFor({ state: "hidden" });
+  assert(!(await page.locator(".chunk-schematic-image").isVisible()));
+  await page
+    .getByRole("button", { name: "مشاهدهٔ تصویر", exact: true })
+    .click();
+  await popup.waitFor();
+  assert.equal(postCount, 2);
   for (const extension of ["PNG", "SVG"]) {
     const downloadPromise = page.waitForEvent("download");
     await page
@@ -222,6 +278,14 @@ const result = {
     assert(content.length > 100);
     if (extension === "PNG") assert.equal(content[0], 137);
   }
+  const dialogBounds = await popup.boundingBox();
+  const headingBounds = await popup
+    .locator(".chunk-schematic-dialog-heading")
+    .boundingBox();
+  assert(
+    headingBounds.y >= dialogBounds.y && headingBounds.y < dialogBounds.y + 60,
+    "close control must remain visible when the image dialog scrolls",
+  );
   if (process.env.TEST_OUTPUT_DIR)
     await page.screenshot({
       path: process.env.TEST_OUTPUT_DIR + "/schematic-desktop.png",
@@ -258,7 +322,7 @@ const result = {
   assert.deepEqual(errors, []);
   await browser.close();
   console.log(
-    "PASS: on-demand POST, double-click protection, retry key reuse, polling, one unified image, real PNG/SVG downloads, source-version guard, failed jobs, mobile layout.",
+    "PASS: on-demand POST, double-click protection, retry key reuse, polling, popup/ESC/reopen, offline-worker hint, slow polling and pause on close, one unified image, real PNG/SVG downloads, source-version guard, failed jobs, mobile layout.",
   );
 })().catch((error) => {
   console.error(error);
