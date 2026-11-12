@@ -230,6 +230,9 @@ const makeRun = (id, body) => ({
       name: "ثبت همهٔ مراحل در صف",
       exact: true,
     });
+    await page.waitForFunction(
+      () => !document.querySelector(".op-run-all")?.disabled,
+    );
     await submit.evaluate((b) => {
       b.click();
       b.click();

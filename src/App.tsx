@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
@@ -7,7 +7,11 @@ import { navigation } from "./config/navigation";
 import { WorkspacePage } from "./pages/WorkspacePage";
 import { DaysPage } from "./pages/DaysPage";
 import { VisualizationsPage } from "./pages/VisualizationsPage";
-import { OverviewPage } from "./pages/OverviewPage";
+const OverviewPage = lazy(() =>
+  import("./pages/OverviewPage").then((module) => ({
+    default: module.OverviewPage,
+  })),
+);
 import { OperationsPage } from "./pages/OperationsPage";
 import { ModelsPage } from "./pages/ModelsPage";
 
@@ -105,7 +109,15 @@ export function App() {
         ) : pathname === "/operations" ? (
           <OperationsPage />
         ) : pathname === "/" ? (
-          <OverviewPage />
+          <Suspense
+            fallback={
+              <main id="main-content" className="main-content" role="status">
+                در حال بارگذاری نمای کلی…
+              </main>
+            }
+          >
+            <OverviewPage />
+          </Suspense>
         ) : pathname === "/visualizations" ? (
           <VisualizationsPage />
         ) : pathname === "/days" ? (

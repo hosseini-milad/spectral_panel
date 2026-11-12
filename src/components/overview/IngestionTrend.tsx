@@ -1,33 +1,30 @@
 import { useRef } from "react";
 import { ArrowUpLeft, BarChart3 } from "lucide-react";
 import { Link } from "react-router-dom";
-import {
-  mockDays,
-  type ProcessingDay,
-  number,
-  summarizeDay,
-  dateLabel,
-  utcDate,
-} from "../../data/days";
+import { number, dateLabel, utcDate } from "../../data/days";
+import type { OverviewReport } from "../../api/overview";
 import { useSvgWidth } from "../../lib/useSvgWidth";
 import { dayDetailsPath } from "../../lib/dayNavigation";
 
-export function IngestionTrend({ selected }: { selected: ProcessingDay }) {
+export function IngestionTrend({
+  selected,
+  points,
+}: {
+  selected: string;
+  points: OverviewReport["trend"];
+}) {
   const svg = useRef<SVGSVGElement>(null);
   const width = useSvgWidth(svg, 700);
-  const days = mockDays
-    .filter((day) => day.date <= selected.date)
-    .slice(0, 7)
-    .reverse();
-  const ceiling =
-    Math.ceil(
-      Math.max(...days.map((day) => summarizeDay(day).records)) / 500000,
-    ) * 500000;
+  const days = points;
+  const highest = Math.max(0, ...days.map((day) => day.raw_records ?? 0));
+  const magnitude = highest > 0 ? 10 ** Math.floor(Math.log10(highest / 3)) : 1;
+  const tickStep = Math.max(1, Math.ceil(highest / 3 / magnitude) * magnitude);
+  const ceiling = tickStep * 3;
   const left = 57,
     right = width - 18,
     bottom = 190,
     top = 24;
-  const band = (right - left) / days.length;
+  const band = (right - left) / Math.max(1, days.length);
   const shortDate = (date: string) =>
     new Intl.DateTimeFormat("fa-IR", {
       timeZone: "UTC",
@@ -43,10 +40,10 @@ export function IngestionTrend({ selected }: { selected: ProcessingDay }) {
           </span>
           <div>
             <h2 id="ingestion-title">روند حجم ورودی</h2>
-            <p>رکورد خام روزهای نمونه تا روز انتخاب‌شده</p>
+            <p>رکورد خام ثبت‌شده؛ روز فاقد اطلاعات با «ناموجود» مشخص است</p>
           </div>
         </div>
-        <Link to={dayDetailsPath(selected.date)}>
+        <Link to={dayDetailsPath(selected)}>
           جزئیات روز
           <ArrowUpLeft size={14} />
         </Link>
@@ -66,7 +63,7 @@ export function IngestionTrend({ selected }: { selected: ProcessingDay }) {
         aria-label="روند حجم رویدادها؛ لینک جزئیات هر روز"
         direction="ltr"
       >
-        <title>رکورد خام روزانه — دادهٔ ماک</title>
+        <title>رکورد خام روزانه — گزارش ذخیره‌شده</title>
         {Array.from({ length: 4 }, (_, index) => {
           const value = (ceiling * index) / 3;
           const y = bottom - ((bottom - top) * index) / 3;
@@ -92,16 +89,16 @@ export function IngestionTrend({ selected }: { selected: ProcessingDay }) {
           );
         })}
         {days.map((day, index) => {
-          const summary = summarizeDay(day);
+          const records = day.raw_records;
           const center = left + band * (index + 0.5);
           const bar = Math.min(48, band * 0.55);
-          const height = (summary.records / ceiling) * (bottom - top);
+          const height = ((records ?? 0) / ceiling) * (bottom - top);
           return (
             <a
-              key={day.date}
-              href={`#${dayDetailsPath(day.date)}`}
-              aria-label={`جزئیات روز ${dateLabel(day.date)}؛ ${number(summary.records)} رویداد`}
-              className={`ov-trend-link${selected.date === day.date ? " is-selected" : ""}`}
+              key={day.day}
+              href={day.available ? `#${dayDetailsPath(day.day)}` : undefined}
+              aria-label={`جزئیات روز ${dateLabel(day.day)}؛ ${records === null ? "اطلاعات ناموجود" : number(records) + " رویداد"}`}
+              className={`ov-trend-link${selected === day.day ? " is-selected" : ""}`}
             >
               <rect
                 x={center - band * 0.45}
@@ -113,17 +110,17 @@ export function IngestionTrend({ selected }: { selected: ProcessingDay }) {
                 className="ov-chart-hit"
               />
               <rect
+                data-day={day.day}
+                data-records={records ?? "unknown"}
                 x={center - bar / 2}
                 y={bottom - height}
                 width={bar}
                 height={height}
                 rx="4"
                 fill={
-                  selected.date === day.date
-                    ? "var(--accent)"
-                    : "var(--chart-green)"
+                  selected === day.day ? "var(--accent)" : "var(--chart-green)"
                 }
-                opacity={selected.date === day.date ? 1 : 0.62}
+                opacity={selected === day.day ? 1 : 0.62}
               />
               <text
                 x={center}
@@ -131,9 +128,22 @@ export function IngestionTrend({ selected }: { selected: ProcessingDay }) {
                 textAnchor="middle"
                 className="ov-chart-axis"
               >
-                {shortDate(day.date)}
+                {index % Math.max(1, Math.ceil((days.length - 1) / 6)) === 0 ||
+                index === days.length - 1
+                  ? shortDate(day.day)
+                  : ""}
               </text>
-              <title>{`${dateLabel(day.date)}: ${number(summary.records)} رکورد؛ پوشش ${number(summary.coverage)}٪ — برای جزئیات انتخاب کنید`}</title>
+              {records === null && (
+                <text
+                  x={center}
+                  y={bottom - 7}
+                  textAnchor="middle"
+                  className="ov-chart-axis"
+                >
+                  ؟
+                </text>
+              )}
+              <title>{`${dateLabel(day.day)}: ${records === null ? "اطلاعات ناموجود" : number(records) + " رکورد"}؛ پوشش ${day.coverage_percent === null ? "نامشخص" : number(day.coverage_percent) + "٪"}${day.available ? " — برای جزئیات انتخاب کنید" : ""}`}</title>
             </a>
           );
         })}
@@ -147,7 +157,8 @@ export function IngestionTrend({ selected }: { selected: ProcessingDay }) {
 }
 
 function decimalMillions(value: number) {
-  return value === 0
-    ? "۰"
-    : `${new Intl.NumberFormat("fa-IR", { maximumFractionDigits: 1 }).format(value / 1000000)}m`;
+  return new Intl.NumberFormat("fa-IR", {
+    maximumFractionDigits: 1,
+    notation: "compact",
+  }).format(value);
 }

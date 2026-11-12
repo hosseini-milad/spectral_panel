@@ -1023,3 +1023,97 @@
     font-size: 10px;
   }
 }
+
+.ov-report-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-block: 16px;
+}
+.ov-report-controls label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.ov-report-controls select {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 8px;
+  border-radius: 6px;
+}
+.ov-pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 14px;
+  padding: 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.ov-unknown-track {
+  height: 5px;
+  flex: 1;
+  border-top: 1px dashed var(--text-muted);
+  opacity: 0.4;
+}
+.ov-state.unknown {
+  color: var(--text-muted);
+  background: var(--surface-raised);
+}
+.overview-page .ov-bottom-note span,
+.overview-page .ov-mock-notice bdi {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.overview-page .chunk-schematic {
+  margin: 12px;
+  border-top: 1px solid var(--line);
+}
+.overview-page .chunk-schematic-heading {
+  flex-wrap: wrap;
+}
+@media (max-width: 600px) {
+  .ov-report-controls {
+    align-items: stretch;
+  }
+  .ov-report-controls .days-button {
+    flex: 1 1 130px;
+    justify-content: center;
+  }
+  .ov-mock-notice {
+    flex-wrap: wrap;
+  }
+  .ov-date-filter {
+    max-width: 100%;
+  }
+  .ov-date-filter select {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .ov-stage-bars > a {
+    gap: 8px;
+  }
+  .ov-stage-bars strong {
+    white-space: nowrap;
+  }
+}
+.ov-notice-item h3 {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.9;
+  color: var(--text-secondary);
+}
+.overview-page .chunk-schematic .report-heading h3 {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.9;
+}
+.overview-page .chunk-schematic .report-heading {
+  flex-wrap: wrap;
+}

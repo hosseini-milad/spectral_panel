@@ -10,7 +10,8 @@
     "test:days": "node tests/days-api.cjs",
     "test:schematics": "node tests/schematics.cjs",
     "test:daily-schematics": "node tests/daily-schematics.cjs",
-    "test:operations": "node tests/operations.cjs"
+    "test:operations": "node tests/operations.cjs",
+    "test:overview": "node tests/overview.cjs"
   },
   "dependencies": {
     "@fontsource/vazirmatn": "^5.3.0",
