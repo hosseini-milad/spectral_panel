@@ -1,102 +1,193 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   CalendarDays,
-  ArrowUpLeft,
-  ArrowDown,
+  ChevronDown,
   Check,
   CirclePlay,
-  Database,
-  FlaskConical,
   Info,
-  Layers3,
   ListChecks,
   LoaderCircle,
-  Pause,
-  RotateCcw,
+  Layers3,
+  Database,
   Settings2,
-  ChevronDown,
+  ArrowUpLeft,
   ShieldCheck,
-  LockKeyhole,
-  AlertCircle,
 } from "lucide-react";
-import { mockDays, dateLabel, number, summarizeDay } from "../data/days";
+import { dateLabel, number } from "../data/days";
+import { apiPath, type InventoryDay, type Page } from "../api/days";
+import { useApi } from "../hooks/useApi";
+import { useOperations } from "../hooks/useOperations";
 import {
-  defaultPipelineSettings,
-  operationSteps,
-  type Scenario,
-} from "../data/operations";
-import { useMockPipeline } from "../hooks/useMockPipeline";
-import { dayDetailsPath } from "../lib/dayNavigation";
+  submitOperation,
+  stages,
+  labels,
+  statusLabels,
+  eventMessage,
+  type Selection,
+  type Settings,
+  type Request,
+} from "../api/operations";
 import { OperationStep } from "../components/operations/OperationStep";
 import { PipelineLogs } from "../components/operations/PipelineLogs";
-import type { ProcessingDay } from "../data/days";
+import { dayDetailsPath, isISODate } from "../lib/dayNavigation";
 import "./operations.css";
 
 export function OperationsPage() {
   const [params, setParams] = useSearchParams();
-  const requested = params.get("day");
-  const day = mockDays.find((item) => item.date === requested);
-  return (
-    <OperationsWorkspace
-      key={day?.date ?? "no-day"}
-      day={day}
-      invalidDay={requested !== null && !day}
-      onDayChange={(date) =>
-        setParams((previous) => {
-          const next = new URLSearchParams(previous);
-          if (date) next.set("day", date);
-          else next.delete("day");
-          return next;
-        })
-      }
-    />
+  const selected = params.get("day");
+  const dayCode = selected && isISODate(selected) ? selected : null;
+  const runId = params.get("run");
+  const [dayOffset, setDayOffset] = useState(0);
+  const days = useApi<Page<InventoryDay>>(
+    apiPath("days/", { limit: 10, offset: dayOffset }),
   );
-}
-
-function OperationsWorkspace({
-  day,
-  invalidDay,
-  onDayChange,
-}: {
-  day: ProcessingDay | undefined;
-  invalidDay: boolean;
-  onDayChange: (date: string) => void;
-}) {
-  const [settings, setSettings] = useState({ ...defaultPipelineSettings });
-  const [scenario, setScenario] = useState<Scenario>("success");
-  const { state, run, stop, reset, busy } = useMockPipeline(day);
-  const completed = state.steps.filter(
-    (step) => step.status === "succeeded",
-  ).length;
-  const finished = completed === operationSteps.length;
-  const progress = Math.round(
-    state.steps.reduce((sum, step) => sum + step.progress, 0) /
-      operationSteps.length,
+  const day = useApi<InventoryDay>(
+    dayCode ? apiPath(`days/${dayCode}/`) : null,
   );
-  const current = state.steps.findIndex((step) => step.status === "running");
-  const first = state.steps.findIndex((step) => step.status !== "succeeded");
-  const settingsLocked = state.steps.some((step) => step.status !== "pending");
-  const summary = day ? summarizeDay(day) : null;
-  const executionLabel = !day
-    ? "ابتدا روز را انتخاب کنید"
-    : finished
-      ? "همهٔ مراحل نمایشی تکمیل شدند"
-      : busy
-        ? `${operationSteps[current >= 0 ? current : 0].shortLabel} در حال نمایش است`
-        : state.status === "failed"
-          ? "اجرا به خطای نمونه رسید"
-          : state.status === "interrupted"
-            ? "شبیه‌سازی متوقف شده است"
-            : completed
-              ? "آمادهٔ ادامهٔ مراحل"
-              : "آمادهٔ شروع پردازش";
-
-  function newSimulation() {
-    reset();
-    setSettings({ ...defaultPipelineSettings });
-    setScenario("success");
+  const [mode, setMode] = useState<Selection["mode"]>("all");
+  const [start, setStart] = useState(0);
+  const [end, setEnd] = useState(9);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [queueOffset, setQueueOffset] = useState(0);
+  const [taskOffset, setTaskOffset] = useState(0);
+  const [eventOffset, setEventOffset] = useState(0);
+  const [settings, setSettings] = useState<Settings>({
+    chunk_size: 20000,
+    batch_size: 2000,
+    sample_ratio: 0.1,
+    representative_ratio: 0.1,
+    neighbors: 12,
+    threshold: 0.95,
+    degree_cap: 20,
+  });
+  useEffect(() => {
+    setSettings((s) => ({ ...s, chunk_size: day.data?.chunk_size ?? 20000 }));
+  }, [day.data?.day, day.data?.chunk_size]);
+  const monitor = useOperations(
+    dayCode,
+    runId,
+    queueOffset,
+    taskOffset,
+    eventOffset,
+  );
+  const run = monitor.run;
+  const [sending, setSending] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const inFlight = useRef(false);
+  const savedRequest = useRef<{ identity: string; key: string } | null>(null);
+  const selection: Selection =
+    mode === "single"
+      ? { mode, chunk_index: start }
+      : mode === "range"
+        ? { mode, start_chunk: start, end_chunk: end }
+        : mode === "page"
+          ? { mode, page, page_size: pageSize }
+          : { mode: "all" };
+  const total = day.data
+    ? Math.ceil(day.data.raw_records / settings.chunk_size)
+    : 0;
+  const first =
+    mode === "page" ? (page - 1) * pageSize : mode === "all" ? 0 : start;
+  const last =
+    mode === "page"
+      ? Math.min(total - 1, first + pageSize - 1)
+      : mode === "all"
+        ? total - 1
+        : mode === "single"
+          ? start
+          : end;
+  const valid =
+    !!day.data &&
+    Number.isInteger(first) &&
+    Number.isInteger(last) &&
+    first >= 0 &&
+    last >= first &&
+    last < total &&
+    last - first < 1000;
+  const running =
+    run?.status === "running" ||
+    run?.status === "queued" ||
+    run?.status === "preparing";
+  const stageDescriptions = [
+    "آماده‌سازی ویژگی‌های رکوردهای خام چانک؛ حدود نرمال‌سازی از کل روز.",
+    "انتخاب کاندیدها با روش موجود خوشه‌بندی و ریسک/نوآوری.",
+    "ساخت گراف شباهت کسینوسی و ذخیرهٔ مولفه‌های چانک.",
+    "انتخاب مشاهدات نماینده از گراف و به‌روزرسانی اطلاعات مولفه‌ها.",
+  ];
+  function chooseRun(id: string) {
+    setTaskOffset(0);
+    setEventOffset(0);
+    setParams((p) => {
+      const q = new URLSearchParams(p);
+      q.set("run", id);
+      return q;
+    });
   }
+  async function submit(stage: Request["stage"]) {
+    if (!valid || !day.data || inFlight.current) return;
+    const body: Request = {
+      snapshot_id: day.data.snapshot_id,
+      selection,
+      stage,
+      settings,
+    };
+    const identity = JSON.stringify({ day: dayCode, ...body });
+    if (savedRequest.current?.identity !== identity)
+      savedRequest.current = { identity, key: crypto.randomUUID() };
+    inFlight.current = true;
+    setSending(true);
+    setSubmitError("");
+    try {
+      const result = await submitOperation(
+        day.data.day,
+        body,
+        savedRequest.current.key,
+      );
+      savedRequest.current = null;
+      chooseRun(result.run.id);
+      monitor.retry();
+    } catch (e) {
+      setSubmitError((e as Error).message);
+    } finally {
+      inFlight.current = false;
+      setSending(false);
+    }
+  }
+  const logs = (monitor.events?.results ?? []).map((e) => ({
+    id: String(e.sequence),
+    time: e.time,
+    level: e.level,
+    message: `${eventMessage(e.code)}${e.chunk_index === null ? "" : ` · چانک ${number(e.chunk_index)}`}${e.stage ? ` · ${labels[e.stage]}` : ""}`,
+  }));
+  const pagination = (
+    offset: number,
+    count: number,
+    size: number,
+    change: (v: number) => void,
+  ) => (
+    <div className="op-pagination">
+      <button
+        className="days-button"
+        disabled={offset === 0}
+        onClick={() => change(Math.max(0, offset - size))}
+      >
+        قبلی
+      </button>
+      <span>
+        {number(Math.floor(offset / size) + 1)} /{" "}
+        {number(Math.max(1, Math.ceil(count / size)))}
+      </span>
+      <button
+        className="days-button"
+        disabled={offset + size >= count}
+        onClick={() => change(offset + size)}
+      >
+        بعدی
+      </button>
+    </div>
+  );
   return (
     <main
       id="main-content"
@@ -108,99 +199,194 @@ function OperationsWorkspace({
           <p className="eyebrow">تحلیل و پردازش / مسیر آماده‌سازی داده</p>
           <h1>عملیات و پردازش</h1>
           <p className="page-description">
-            روز را انتخاب کنید و مراحل آماده‌سازی را با یک مسیر روشن پیش ببرید.
+            روز و دامنهٔ چانک‌ها را انتخاب کنید و عملیات را در صف قرار دهید.
           </p>
         </div>
         <span className="op-mock-badge">
-          <FlaskConical size={15} />
-          اجرای نمایشی
+          <Database size={15} />
+          اطلاعات سرور
         </span>
       </div>
       <p className="op-mock-notice">
         <Info size={15} />
         <span>
-          این صفحه ماک است؛ دکمه‌ها فقط شبیه‌سازی را اجرا می‌کنند و دادهٔ واقعی
-          تغییر نمی‌کند.
+          پردازش واقعی است؛ خروجی‌های سازگار استفاده می‌شوند. وضعیت هر ۱۰ ثانیه
+          از سرور دریافت می‌شود.
         </span>
         <span className="op-sequential-hint">
           <ListChecks size={14} />
           اجرای ترتیبی مراحل
         </span>
       </p>
-
       <section
-        className={`op-card op-day-card${day ? " day-chosen" : ""}`}
+        className={`op-card op-day-card${day.data ? " day-chosen" : ""}`}
         aria-labelledby="processing-day-title"
       >
         <div className="op-day-main">
           <span className="op-day-step">
-            {day ? <Check size={20} /> : "۰۱"}
+            {day.data ? <Check size={20} /> : "۰۱"}
           </span>
           <div className="op-day-label">
             <span>گام اول</span>
             <h2 id="processing-day-title">انتخاب روز پردازش</h2>
-            <p>تمام مراحل روی چانک‌های موجود همین روز اعمال می‌شوند.</p>
+            <p>دامنهٔ عملیات پیش از ثبت تثبیت می‌شود.</p>
           </div>
           <label className="op-day-picker">
             <CalendarDays size={17} />
             <select
               aria-label="روز پردازش"
-              value={day?.date ?? ""}
-              disabled={busy}
-              onChange={(event) => onDayChange(event.target.value)}
+              value={dayCode ?? ""}
+              disabled={sending}
+              onChange={(e) => {
+                setQueueOffset(0);
+                setTaskOffset(0);
+                setEventOffset(0);
+                setSubmitError("");
+                setParams(e.target.value ? { day: e.target.value } : {});
+              }}
             >
               <option value="">یک روز را انتخاب کنید…</option>
-              {mockDays.map((item) => (
-                <option key={item.date} value={item.date}>
-                  {dateLabel(item.date)}
+              {day.data &&
+                !days.data?.results.some((d) => d.day === dayCode) && (
+                  <option value={dayCode!}>{dateLabel(dayCode!)}</option>
+                )}
+              {days.data?.results.map((d) => (
+                <option key={d.day} value={d.day}>
+                  {dateLabel(d.day)}
                 </option>
               ))}
             </select>
             <ChevronDown size={15} />
           </label>
         </div>
-        {day && summary ? (
+        {days.data &&
+          days.data.count > 10 &&
+          pagination(dayOffset, days.data.count, 10, setDayOffset)}
+        {(days.error || day.error) && (
+          <p className="op-failure-note" role="alert">
+            {days.error?.message ?? day.error?.message}
+            <button
+              onClick={() => {
+                days.retry();
+                day.retry();
+              }}
+            >
+              تلاش دوباره
+            </button>
+          </p>
+        )}
+        {day.data ? (
           <div className="op-day-context">
             <span>
               <Database size={14} />
-              <strong>{number(summary.records)}</strong> رکورد خام
+              <strong>{number(day.data.raw_records)}</strong> رکورد خام
             </span>
             <span>
               <Layers3 size={14} />
-              <strong>{number(day.chunks.length)}</strong> از{" "}
-              {number(day.expectedChunks)} چانک موجود
+              <strong>{number(total)}</strong> چانک ورودی
             </span>
-            <span className="op-source-file" dir="ltr">
-              {day.source}
-            </span>
-            <Link to={dayDetailsPath(day.date)}>
+            <Link to={dayDetailsPath(day.data.day)}>
               جزئیات روز
               <ArrowUpLeft size={14} />
             </Link>
+            <button className="days-button" onClick={day.retry}>
+              بازخوانی روز
+            </button>
           </div>
         ) : (
           <div className="op-day-empty">
-            <LockKeyhole size={14} />
-            {invalidDay
-              ? "روز موجود در آدرس، در نمونه داده‌ای ندارد؛ یک روز از فهرست انتخاب کنید."
-              : "با انتخاب روز، اولین مرحله فعال می‌شود. هنوز هیچ اجرایی شروع نشده است."}
+            {day.loading || days.loading
+              ? "در حال دریافت روزها…"
+              : "یک روز از فهرست سرور انتخاب کنید."}
           </div>
         )}
-        {busy && (
-          <p className="op-day-lock">
-            <LockKeyhole size={12} />
-            هنگام اجرا نمی‌توان روز یا پارامترها را تغییر داد.
-          </p>
-        )}
+        <div className="op-scope-fields">
+          <label>
+            دامنهٔ اجرا
+            <select
+              aria-label="دامنهٔ چانک‌ها"
+              value={mode}
+              onChange={(e) => setMode(e.target.value as Selection["mode"])}
+            >
+              <option value="all">همهٔ چانک‌ها</option>
+              <option value="single">چانک مشخص</option>
+              <option value="range">بازهٔ چانک‌ها</option>
+              <option value="page">صفحهٔ چانک‌ها</option>
+            </select>
+          </label>
+          {(mode === "single" || mode === "range") && (
+            <label>
+              {mode === "single" ? "شمارهٔ چانک" : "از چانک"}
+              <input
+                aria-label="از چانک"
+                type="number"
+                min={0}
+                value={start}
+                onChange={(e) => setStart(Number(e.target.value))}
+              />
+            </label>
+          )}
+          {mode === "range" && (
+            <label>
+              تا چانک
+              <input
+                aria-label="تا چانک"
+                type="number"
+                min={0}
+                value={end}
+                onChange={(e) => setEnd(Number(e.target.value))}
+              />
+            </label>
+          )}
+          {mode === "page" && (
+            <>
+              <label>
+                صفحه
+                <input
+                  aria-label="صفحهٔ چانک‌ها"
+                  type="number"
+                  min={1}
+                  value={page}
+                  onChange={(e) => setPage(Number(e.target.value))}
+                />
+              </label>
+              <label>
+                چانک در صفحه
+                <select
+                  aria-label="تعداد چانک در صفحه"
+                  value={pageSize}
+                  onChange={(e) => setPageSize(Number(e.target.value))}
+                >
+                  {[5, 10, 20, 50, 100].map((n) => (
+                    <option key={n} value={n}>
+                      {number(n)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          )}
+        </div>
+        <p className="op-day-empty">
+          شمارهٔ واقعی چانک از صفر است؛ صفحهٔ اول با اندازهٔ ۱۰ شامل چانک‌های ۰
+          تا ۹ است. حداکثر ۱۰۰۰ چانک در هر درخواست.
+          {day.data && (
+            <strong role="status">
+              {valid
+                ? ` دامنهٔ انتخابی: ${number(first)} تا ${number(last)}، ${number(last - first + 1)} چانک.`
+                : " محدودهٔ انتخاب‌شده معتبر نیست."}
+            </strong>
+          )}
+        </p>
       </section>
-      {day && summary && summary.missing > 0 && (
-        <p className="op-coverage-note">
-          <Info size={13} />
-          {number(summary.missing)} چانک از روز نمونه موجود نیست؛ این مسیر فقط{" "}
-          {number(day.chunks.length)} چانک موجود را شبیه‌سازی می‌کند.
+      {(submitError || monitor.error) && (
+        <p className="op-failure-note" role="alert">
+          {submitError || monitor.error}
+          {monitor.error && (
+            <button onClick={monitor.retry}>تلاش دوباره</button>
+          )}
         </p>
       )}
-
       <div className="op-workspace">
         <section className="op-stages" aria-labelledby="processing-steps-title">
           <div className="op-section-heading">
@@ -208,31 +394,37 @@ function OperationsWorkspace({
               <ListChecks size={18} />
               <h2 id="processing-steps-title">مراحل پردازش روز</h2>
             </div>
-            <span>{number(completed)} از ۴ مرحله تکمیل‌شده</span>
+            <span>
+              {run ? "وضعیت اجرای انتخاب‌شده" : "هنوز اجرایی انتخاب نشده"}
+            </span>
           </div>
           <ol className="op-steps-list">
-            {operationSteps.map((step, index) => (
-              <OperationStep
-                key={step.id}
-                index={index}
-                execution={state.steps[index]}
-                hasDay={!!day}
-                ready={!!day && index === first && !busy}
-                busy={busy}
-                settings={state.settings ?? settings}
-                onRun={() => run(index, settings, scenario)}
-              />
-            ))}
+            {stages.map((stage, index) => {
+              const step = run?.stages.find((s) => s.stage === stage);
+              return (
+                <OperationStep
+                  key={stage}
+                  index={index}
+                  title={labels[stage]}
+                  description={stageDescriptions[index]}
+                  step={step}
+                  ready={valid && !sending}
+                  busy={sending}
+                  onRun={() => void submit(stage)}
+                  runId={run?.id}
+                />
+              );
+            })}
           </ol>
           <div className="op-stage-note">
             <ShieldCheck size={15} />
             <p>
-              وضعیت این مسیر مستقل از صفحهٔ روزها و چانک‌هاست؛ اجرای نمایشی،
-              گزارش‌ها یا خروجی‌های قبلی را بازنویسی نمی‌کند.
+              تغییر دامنه یا تنظیمات، اجرای ثبت‌شده را تغییر نمی‌دهد. عملیات
+              جدید در انتهای صف قرار می‌گیرد؛ مراحلِ فاقد پیش‌نیاز با خطای روشن
+              متوقف می‌شوند.
             </p>
           </div>
         </section>
-
         <aside className="op-run-sidebar">
           <section
             className="op-card op-run-summary"
@@ -244,184 +436,264 @@ function OperationsWorkspace({
               </span>
               <div>
                 <h2 id="execution-summary-title">اجرای یکپارچه</h2>
-                <p>مراحل باقی‌مانده، به‌ترتیب و بدون هم‌پوشانی</p>
+                <p>چانک‌ها و مراحل، به‌ترتیب و بدون هم‌پوشانی</p>
               </div>
             </div>
             <div className="op-summary-scope">
-              <span>دامنهٔ اجرا</span>
-              <strong>{day ? dateLabel(day.date) : "روز انتخاب نشده"}</strong>
-            </div>
-            <div className="op-total-progress">
-              <div>
-                <span>پیشرفت مسیر ماک</span>
-                <strong>{number(progress)}٪</strong>
-              </div>
-              <progress
-                max={100}
-                value={progress}
-                aria-label="پیشرفت کل مسیر نمایشی"
-              />
-            </div>
-            <div
-              className={`op-execution-state ${state.status}${finished ? " all-complete" : ""}`}
-              role="status"
-            >
-              <span className="op-state-dot" />
-              {executionLabel}
+              <span>دامنهٔ درخواست جدید</span>
+              <strong>
+                {day.data
+                  ? `${dateLabel(day.data.day)} · ${number(first)} تا ${number(last)}`
+                  : "روز انتخاب نشده"}
+              </strong>
             </div>
             <button
               className="op-run-all"
-              onClick={() => run("all", settings, scenario)}
-              disabled={!day || busy || finished}
+              disabled={!valid || sending}
+              onClick={() => void submit("all")}
             >
-              {busy ? (
+              {sending ? (
                 <LoaderCircle size={17} className="op-spin" />
-              ) : finished ? (
-                <Check size={17} />
               ) : (
                 <CirclePlay size={17} />
               )}
-              {busy
-                ? "در حال اجرای نمایشی"
-                : finished
-                  ? "مراحل تکمیل شدند"
-                  : "اجرای همهٔ مراحل"}
+              ثبت همهٔ مراحل در صف
             </button>
             <p className="op-run-help">
-              مراحل تکمیل‌شده تکرار نمی‌شوند؛ هر مرحله پس از موفقیت مرحلهٔ قبلی
-              شروع می‌شود.
+              بازنویسی اجباری و حذف داده از این صفحه انجام نمی‌شود. صف روی سرور
+              باقی می‌ماند.
             </p>
-            {busy && (
-              <button className="op-stop-button" onClick={stop}>
-                <Pause size={14} />
-                توقف شبیه‌سازی
-              </button>
-            )}
-            <button
-              className="op-reset-button"
-              disabled={busy || !settingsLocked}
-              onClick={newSimulation}
-            >
-              <RotateCcw size={13} />
-              شروع نمایش جدید
-            </button>
-            {state.runId && (
-              <div className="op-run-id">
-                <span>شناسهٔ آخرین اجرای ماک</span>
-                <bdi>{state.runId}</bdi>
-              </div>
-            )}
             <details className="op-settings">
               <summary>
                 <Settings2 size={15} />
-                تنظیمات سناریو
+                تنظیمات پردازش
                 <ChevronDown size={14} />
               </summary>
               <div>
-                <label>
-                  سهم نمونه از دادهٔ نرمال‌شده
-                  <select
-                    aria-label="درصد نمونه‌برداری"
-                    value={settings.samplePercent}
-                    disabled={!day || settingsLocked || busy}
-                    onChange={(event) =>
-                      setSettings({
-                        ...settings,
-                        samplePercent: Number(event.target.value),
-                      })
-                    }
-                  >
-                    {[5, 10, 15, 20, 30, 50].map((value) => (
-                      <option key={value} value={value}>
-                        {number(value)}٪
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  سهم نماینده از کاندیدها
-                  <select
-                    aria-label="درصد انتخاب نماینده"
-                    value={settings.representativePercent}
-                    disabled={!day || settingsLocked || busy}
-                    onChange={(event) =>
-                      setSettings({
-                        ...settings,
-                        representativePercent: Number(event.target.value),
-                      })
-                    }
-                  >
-                    {[5, 10, 15, 20, 30].map((value) => (
-                      <option key={value} value={value}>
-                        {number(value)}٪
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                {(
+                  [
+                    ["chunk_size", "ظرفیت هر چانک", 1, 1000000, 1],
+                    [
+                      "sample_ratio",
+                      "نسبت کاندید (۰ تا ۱)",
+                      0.001,
+                      0.999,
+                      0.01,
+                    ],
+                    [
+                      "representative_ratio",
+                      "نسبت نماینده (۰ تا ۱)",
+                      0.001,
+                      0.999,
+                      0.01,
+                    ],
+                    ["neighbors", "تعداد همسایه", 1, 100, 1],
+                    ["threshold", "آستانهٔ کسینوسی", -1, 1, 0.001],
+                    ["degree_cap", "سقف درجه", 1, 1000, 1],
+                  ] as const
+                ).map(([key, label, min, max, step]) => (
+                  <label key={key}>
+                    {label}
+                    <input
+                      aria-label={label}
+                      type="number"
+                      min={min}
+                      max={max}
+                      step={step}
+                      value={settings[key]}
+                      disabled={
+                        sending ||
+                        (key === "chunk_size" && day.data?.chunk_size != null)
+                      }
+                      onChange={(e) =>
+                        setSettings({
+                          ...settings,
+                          [key]: Number(e.target.value),
+                        })
+                      }
+                    />
+                  </label>
+                ))}
                 <p className="op-settings-note">
-                  برای تغییر پارامترها پس از شروع، «نمایش جدید» بسازید.
-                </p>
-                <label>
-                  حالت شبیه‌سازی
-                  <select
-                    aria-label="سناریوی شبیه‌سازی"
-                    value={scenario}
-                    disabled={!day || busy}
-                    onChange={(event) =>
-                      setScenario(event.target.value as Scenario)
-                    }
-                  >
-                    <option value="success">اجرای موفق</option>
-                    <option value="sampling-error">خطا در نمونه‌برداری</option>
-                  </select>
-                </label>
-                <p className="op-settings-note">
-                  سناریوی خطا فقط برای بررسی ظاهر شکست و تلاش مجدد است.
+                  آستانهٔ پیش‌فرض ۰٫۹۵ متعلق به فرمان فعلی ساخت گراف است. مسیر
+                  فعلی ZCA اعمال نمی‌کند. تنظیمات گراف فقط برای گراف تازه
+                  استفاده می‌شوند؛ پارامترهای واقعی گراف موجود در جزئیات هر کار
+                  هستند.
                 </p>
               </div>
             </details>
+            {run && (
+              <>
+                <div className="op-summary-scope">
+                  <span>اجرای در حال مشاهده</span>
+                  <strong>
+                    {dateLabel(run.day)} · {number(run.chunk_start)} تا{" "}
+                    {number(run.chunk_end)}
+                  </strong>
+                </div>
+                <div className="op-run-id">
+                  <bdi>{run.id}</bdi>
+                </div>
+                <div className="op-total-progress">
+                  <div>
+                    <span>پیشرفت چانک‌ـ‌مرحله‌های تکمیل‌شده</span>
+                    <strong>{number(run.progress.percent)}٪</strong>
+                  </div>
+                  <progress
+                    max={100}
+                    value={run.progress.percent}
+                    aria-label="پیشرفت کل عملیات"
+                  />
+                </div>
+                <div
+                  className={`op-execution-state ${run.status}`}
+                  role="status"
+                >
+                  {statusLabels[run.status] ?? run.status}
+                  {run.queue_position !== null
+                    ? ` · جایگاه صف ${number(run.queue_position)}`
+                    : ""}
+                </div>
+                <p className="op-run-help">
+                  {number(run.progress.completed_units)} از{" "}
+                  {number(run.progress.total_units)} واحد ·{" "}
+                  {number(run.progress.reused_units)} خروجی استفاده‌شده
+                  {run.current_chunk !== null
+                    ? ` · چانک ${number(run.current_chunk)}`
+                    : ""}
+                  {run.current_stage ? ` · ${labels[run.current_stage]}` : ""}.
+                  درصد داخل محاسبه اندازه‌گیری نشده است.
+                </p>
+                {running && !run.worker.online && (
+                  <p className="op-failure-note" role="status">
+                    worker علمی فعال نیست؛ فرمان run_api_worker را بررسی کنید.
+                  </p>
+                )}
+                {run.error && (
+                  <p role="alert" className="op-failure-note">
+                    {eventMessage(run.error.code)}
+                  </p>
+                )}
+                <p className="op-settings-note">
+                  نسخهٔ تنظیمات: <bdi>{run.configuration_version}</bdi> · آخرین
+                  دریافت:{" "}
+                  {new Intl.DateTimeFormat("fa-IR", {
+                    timeZone: "Asia/Tehran",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                  }).format(new Date(run.observed_at))}
+                </p>
+                {run.inventory_refresh === "failed" && (
+                  <p role="alert">
+                    اطلاعات روز همگام نشده؛ sync_processing_days را اجرا کنید.
+                  </p>
+                )}
+              </>
+            )}
           </section>
           <div className="op-local-note">
             <Info size={15} />
             <p>
-              نمایش محلی است؛ با خروج از صفحه یا بازخوانی، شبیه‌سازی متوقف و
-              وضعیت آن پاک می‌شود.
+              خروج از صفحه پردازش را متوقف نمی‌کند. اجرای قبلی را از صف انتخاب
+              کنید یا پیوند دارای شناسهٔ اجرا را باز کنید.
             </p>
           </div>
         </aside>
       </div>
-      {finished && day && (
-        <div className="op-completion-banner" role="status">
-          <Check size={19} />
+      <section
+        className="op-card op-queue"
+        aria-labelledby="operation-queue-title"
+      >
+        <div className="op-section-heading">
           <div>
-            <strong>مسیر نمایشی این روز تکمیل شد</strong>
-            <p>
-              خروجی‌های هر مرحله در کارت همان مرحله قابل مشاهده‌اند. دادهٔ ماک
-              روزها تغییری نکرده است.
-            </p>
+            <ListChecks size={18} />
+            <h2 id="operation-queue-title">صف و سابقهٔ عملیات</h2>
           </div>
-          <Link to={dayDetailsPath(day.date)}>
-            مشاهدهٔ روز
-            <ArrowUpLeft size={14} />
-          </Link>
+          <span>به‌روزرسانی هر ۱۰ ثانیه</span>
         </div>
+        {monitor.queue?.results.length ? (
+          monitor.queue.results.map((item) => (
+            <button
+              key={item.id}
+              className={`op-queue-row${runId === item.id ? " selected" : ""}`}
+              onClick={() => chooseRun(item.id)}
+            >
+              <bdi>{item.id}</bdi>
+              <span>
+                {dateLabel(item.day)} · چانک {number(item.chunk_start)} تا{" "}
+                {number(item.chunk_end)}
+              </span>
+              <span>
+                {statusLabels[item.status]} · {number(item.progress.percent)}٪
+              </span>
+            </button>
+          ))
+        ) : (
+          <p className="op-day-empty">عملیاتی ثبت نشده است.</p>
+        )}
+        {monitor.queue &&
+          pagination(queueOffset, monitor.queue.count, 5, setQueueOffset)}
+      </section>
+      {run && (
+        <section className="op-card op-queue">
+          <div className="op-section-heading">
+            <h2>جزئیات کارهای اجرا</h2>
+            <span>{number(monitor.tasks?.count ?? 0)} چانک‌ـ‌مرحله</span>
+          </div>
+          <div className="op-task-scroll">
+            <table className="op-task-table">
+              <thead>
+                <tr>
+                  <th>چانک</th>
+                  <th>مرحله</th>
+                  <th>وضعیت</th>
+                  <th>ورودی / خروجی</th>
+                  <th>جزئیات</th>
+                </tr>
+              </thead>
+              <tbody>
+                {monitor.tasks?.results.map((task) => (
+                  <tr key={task.position}>
+                    <td>{number(task.chunk_index)}</td>
+                    <td>{labels[task.stage]}</td>
+                    <td>{statusLabels[task.status] ?? task.status}</td>
+                    <td>
+                      {task.result
+                        ? `${number(task.result.input)} / ${number(task.result.output)}`
+                        : "—"}
+                    </td>
+                    <td>
+                      {task.error
+                        ? eventMessage(task.error.code)
+                        : task.result?.reused
+                          ? "استفاده از خروجی موجود"
+                          : "—"}
+                      {task.result?.graph_parameters && (
+                        <details>
+                          <summary>پارامترهای گراف</summary>
+                          <pre dir="ltr">
+                            {JSON.stringify(
+                              task.result.graph_parameters,
+                              null,
+                              2,
+                            )}
+                          </pre>
+                        </details>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {monitor.tasks &&
+            pagination(taskOffset, monitor.tasks.count, 10, setTaskOffset)}
+        </section>
       )}
-      {state.status === "failed" && (
-        <p className="op-failure-note">
-          <AlertCircle size={15} />
-          مراحل بعدی اجرا نشده‌اند. برای تلاش مجدد موفق، حالت شبیه‌سازی را تغییر
-          دهید؛ مرحله‌های موفق حفظ می‌شوند.
-        </p>
-      )}
-      <PipelineLogs logs={state.logs} busy={busy} />
-      <div className="op-bottom-note">
-        <FlaskConical size={14} />
-        <span>
-          بدون درخواست API، حذف یا بازسازی واقعی · درصدها و خروجی‌ها صرفاً برای
-          نمایش رابط کاربری‌اند
-        </span>
-        <ArrowDown size={12} aria-hidden="true" />
-      </div>
+      <PipelineLogs logs={logs} busy={!!running} />
+      {monitor.events &&
+        pagination(eventOffset, monitor.events.count, 20, setEventOffset)}
     </main>
   );
 }

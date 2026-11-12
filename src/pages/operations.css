@@ -1251,3 +1251,113 @@
     font-size: 11px;
   }
 }
+
+.op-scope-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 18px 24px;
+  border-top: 1px solid var(--line);
+}
+.op-scope-fields label {
+  display: grid;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  min-width: 120px;
+}
+.op-scope-fields input,
+.op-scope-fields select,
+.op-settings input {
+  font: inherit;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 9px;
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
+}
+.op-settings input {
+  margin-top: 6px;
+}
+.op-pagination {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.op-queue {
+  margin-block: 24px;
+  padding: 20px;
+  overflow: hidden;
+}
+.op-queue-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  width: 100%;
+  text-align: start;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  padding: 16px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.op-queue-row.selected {
+  background: var(--accent-soft);
+  outline: 1px solid var(--accent-border);
+}
+.op-queue-row bdi,
+.op-run-id bdi,
+.op-step-details bdi {
+  overflow-wrap: anywhere;
+}
+.op-task-scroll {
+  overflow-x: auto;
+}
+.op-task-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  min-width: 550px;
+}
+.op-task-table th,
+.op-task-table td {
+  padding: 14px;
+  text-align: start;
+  border-bottom: 1px solid var(--line);
+}
+.op-task-table pre {
+  white-space: pre-wrap;
+  max-width: 300px;
+}
+@media (max-width: 600px) {
+  .op-scope-fields {
+    padding: 16px;
+  }
+  .op-scope-fields label {
+    flex: 1 1 120px;
+  }
+  .op-queue {
+    padding: 12px;
+  }
+  .op-queue-row {
+    padding: 12px;
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .op-queue-row bdi {
+    font-size: 10px;
+  }
+}

@@ -28,12 +28,12 @@ export function PipelineLogs({
       <div className="op-section-heading">
         <div>
           <Terminal size={18} />
-          <h2 id="pipeline-logs-title">رویدادهای اجرای نمایشی</h2>
+          <h2 id="pipeline-logs-title">رویدادهای پردازش</h2>
           <span className="op-count">{number(logs.length)}</span>
         </div>
         <span className={`op-log-state${busy ? " active" : ""}`}>
           <Circle size={6} fill="currentColor" />
-          {busy ? "در حال ثبت نمایش" : "ثبت محلی"}
+          {busy ? "در حال دریافت از سرور" : "ثبت سرور"}
         </span>
       </div>
       <div
@@ -41,7 +41,7 @@ export function PipelineLogs({
         ref={box}
         role="log"
         aria-live="polite"
-        aria-label="لاگ شبیه‌سازی پردازش"
+        aria-label="رویدادهای پردازش سرور"
         tabIndex={0}
         onScroll={() => {
           if (box.current)
@@ -84,8 +84,8 @@ export function PipelineLogs({
         )}
       </div>
       <div className="op-log-note">
-        زمان‌ها به وقت تهران‌اند. این لاگ‌ها در همین صفحه تولید می‌شوند و لاگ
-        بک‌اند نیستند.
+        زمان‌ها به وقت تهران‌اند. رویدادهای امنِ ثبت‌شده در سرور نمایش داده
+        می‌شوند؛ جزئیات فنی در لاگ داخلی worker باقی می‌مانند.
       </div>
     </section>
   );
