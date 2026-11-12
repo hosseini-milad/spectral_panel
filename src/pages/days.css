@@ -1337,3 +1337,8 @@
     font-size: 13px;
   }
 }
+
+/* On-demand preview lives inside the existing expanded chunk details. */
+.chunk-schematic { margin-block: 1.5rem; min-width: 0; }
+.chunk-schematic-image { display: block; width: 100%; height: auto; margin-block: 1rem; border-radius: 8px; }
+.chunk-schematic .table-controls { flex-wrap: wrap; margin-block: 1rem; }

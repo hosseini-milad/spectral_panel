@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { Fragment, lazy, Suspense, useState } from "react";
 import { AlertCircle, ChevronDown, Check, Search, Layers3 } from "lucide-react";
 import { dayStatusLabels, stages, normalizeSearch } from "../../data/days";
 import {
@@ -10,6 +10,8 @@ import {
   observationTime,
 } from "../../api/days";
 import { useApi, useDebounced } from "../../hooks/useApi";
+
+const ChunkSchematic = lazy(() => import("./ChunkSchematic"));
 
 export function chunkStages(chunk: InventoryChunk): (boolean | null)[] {
   return [
@@ -226,6 +228,19 @@ export function ChunkTable({ day }: { day: InventoryDay }) {
                             وضعیت به معنی تشخیص حمله نیست.
                           </p>
                         )}
+                        <Suspense
+                          fallback={
+                            <p className="chunk-detail-note">
+                              در حال آماده‌سازی نمایش تصویر…
+                            </p>
+                          }
+                        >
+                          <ChunkSchematic
+                            key={`${day.day}:${chunk.chunk_index}:${day.snapshot_id}`}
+                            day={day}
+                            chunk={chunk}
+                          />
+                        </Suspense>
                         <p className="chunk-detail-note">
                           آخرین مشاهده: {observationTime(chunk.updated_at)} ·
                           وضعیت تکمیل مربوط به لایهٔ اول است؛ زمان، شناسهٔ اجرا

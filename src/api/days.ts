@@ -128,3 +128,87 @@ export function observationTime(value: string) {
     timeZone: "Asia/Tehran",
   }).format(new Date(value));
 }
+
+export interface SchematicResult {
+  schema_version: string;
+  render_id: string;
+  day: string;
+  chunk_index: number;
+  inventory_snapshot_id: string;
+  source_signature: string;
+  generated_at: string;
+  component_revision: string | null;
+  layout: "global";
+  label_source: string;
+  metrics: {
+    nodes: number;
+    edges: number;
+    representatives: number;
+    components: number;
+    represented_components: number;
+    isolated_nodes: number;
+    mean_degree: number;
+    density: number;
+    node_reduction_percent: number;
+    normal_label_nodes: number;
+    attack_label_nodes: number;
+    unknown_label_nodes: number;
+  };
+  image_url: string;
+  png_download_url: string;
+  svg_download_url: string;
+}
+export interface SchematicJob {
+  id: string;
+  render_id: string;
+  status:
+    "queued" | "running" | "succeeded" | "failed" | "cancelled" | "interrupted";
+  status_url: string;
+  progress: { phase: string; percent: number | null };
+  error: { code: string; detail: string } | null;
+  result: SchematicResult | null;
+}
+export async function createSchematic(
+  day: string,
+  chunk: number,
+  snapshot: string,
+  key: string,
+  signal: AbortSignal,
+) {
+  let response: Response;
+  try {
+    response = await fetch(apiPath(`days/${day}/chunks/${chunk}/schematic/`), {
+      method: "POST",
+      signal,
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "Idempotency-Key": key,
+      },
+      body: JSON.stringify({ snapshot_id: snapshot }),
+    });
+  } catch (error) {
+    if (signal.aborted) throw error;
+    throw new ApiError(
+      0,
+      "ارتباط با سرور برقرار نشد. تلاش دوباره، درخواست تکراری ایجاد نمی‌کند.",
+    );
+  }
+  if (!response.ok)
+    throw new ApiError(
+      response.status,
+      response.status === 409
+        ? "اطلاعات روز تغییر کرده یا گراف و نماینده‌های ذخیره‌شده آماده نیستند؛ روز را دوباره باز کنید."
+        : response.status === 404
+          ? "چانک در فهرست سرور پیدا نشد."
+          : "ثبت درخواست تصویر ممکن نشد. دوباره تلاش کنید.",
+    );
+  try {
+    return (await response.json()) as { job: SchematicJob; created: boolean };
+  } catch {
+    throw new ApiError(
+      0,
+      "پاسخ ثبت درخواست قابل خواندن نیست؛ دوباره تلاش کنید.",
+    );
+  }
+}
