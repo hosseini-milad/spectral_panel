@@ -7,6 +7,8 @@ import {
   AlertTriangle,
   Check,
 } from "lucide-react";
+import { Link } from "react-router-dom";
+import { inspectionPath } from "../../lib/dayNavigation";
 import { dateLabel, stages } from "../../data/days";
 import { ChunkTable } from "./ChunkTable";
 import {
@@ -144,6 +146,10 @@ export function DayDetail({ day: initialDay }: { day: InventoryDay }) {
                 </h3>
                 <p>جمع‌بندی همین روز بر اساس اطلاعات ثبت‌شدهٔ سرور</p>
               </div>
+              <Link className="days-button" to={inspectionPath(day.day)}>
+                <FileText size={15} />
+                باز کردن گزارش و داده‌های اصلی
+              </Link>
               <button className="days-button" onClick={downloadReport}>
                 <Download size={15} />
                 دریافت JSON

@@ -10,3 +10,13 @@ export function isISODate(value: string) {
 
 export const dayDetailsPath = (date: string) =>
   `/days?day=${encodeURIComponent(date)}`;
+
+export function parseChunkIndex(value: string | null): number | undefined {
+  if (value === null || !/^(0|[1-9]\d*)$/.test(value)) return undefined;
+  const index = Number(value);
+  return Number.isSafeInteger(index) && index <= 2147483647 ? index : undefined;
+}
+export const chunkDetailsPath = (date: string, chunk: number) =>
+  `${dayDetailsPath(date)}&chunk=${chunk}`;
+export const inspectionPath = (date: string, chunk?: number) =>
+  `/visualizations?${new URLSearchParams({ day: date, ...(chunk !== undefined ? { chunk: String(chunk) } : {}) })}`;

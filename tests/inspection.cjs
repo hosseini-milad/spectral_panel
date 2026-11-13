@@ -193,6 +193,41 @@ const rows = components.flatMap((component, k) =>
         return route.fulfill({
           json: { count: 1, next: null, previous: null, results: [day] },
         });
+      if (url.pathname === `/api/v1/days/${day.day}/chunks/`) {
+        const selected = [0, 1].filter(
+          (i) =>
+            !url.searchParams.has("chunk_index") ||
+            i === Number(url.searchParams.get("chunk_index")),
+        );
+        return route.fulfill({
+          json: {
+            day: day.day,
+            snapshot_id: day.snapshot_id,
+            count: selected.length,
+            next: null,
+            previous: null,
+            results: selected.map((i) => ({
+              day: day.day,
+              snapshot_id: day.snapshot_id,
+              chunk_index: i,
+              status: "complete",
+              normalized_records: 100,
+              candidate_records: 10,
+              components: 1,
+              representatives: 1,
+              normalization_complete: true,
+              expected_raw_records: 100,
+              updated_at: day.updated_at,
+              graph: {
+                nodes: 10,
+                edges: 4,
+                component_status: "complete",
+                component_count: 1,
+              },
+            })),
+          },
+        });
+      }
       if (url.pathname === `/api/v1/days/${day.day}/`)
         return route.fulfill({ json: day });
       if (url.pathname === root && route.request().method() === "POST") {
@@ -262,7 +297,18 @@ const rows = components.flatMap((component, k) =>
         label === "all" ||
         (row.labels ? row.labels[label] > 0 : row.label === label);
       if (url.pathname === baseReport + "metas/")
-        return route.fulfill({ json: pageOf(metas.filter(matches)) });
+        return route.fulfill({
+          json: pageOf(
+            metas.filter(
+              (m) =>
+                matches(m) &&
+                (!url.searchParams.has("chunk_index") ||
+                  m.source_chunks.includes(
+                    Number(url.searchParams.get("chunk_index")),
+                  )),
+            ),
+          ),
+        });
       const match = url.pathname.match(
         /\/metas\/([^/]+)\/components\/(?:([^/]+)\/observations\/(?:([^/]+)\/)?)?$/,
       );
@@ -271,7 +317,14 @@ const rows = components.flatMap((component, k) =>
         if (!component)
           return route.fulfill({
             json: pageOf(
-              components.filter((c) => c.meta_id === meta && matches(c)),
+              components.filter(
+                (c) =>
+                  c.meta_id === meta &&
+                  matches(c) &&
+                  (!url.searchParams.has("chunk_index") ||
+                    c.chunk_index ===
+                      Number(url.searchParams.get("chunk_index"))),
+              ),
             ),
           });
         let selected = rows.filter(
@@ -441,6 +494,92 @@ const rows = components.flatMap((component, k) =>
         path: process.env.TEST_OUTPUT_DIR + "/inspection-mobile.png",
         fullPage: true,
       });
+    const postsBeforeNavigation = posts;
+    await page.goto(base + "/#/days?day=" + day.day);
+    const dayReport = page.getByRole("link", {
+      name: `گزارش روز ${day.day}`,
+      exact: true,
+    });
+    await dayReport.waitFor();
+    assert(
+      (await dayReport.getAttribute("href")).includes(
+        "visualizations?day=" + day.day,
+      ),
+    );
+    await page
+      .getByRole("link", { name: "جزئیات چانک ۱", exact: true })
+      .click();
+    await page.locator(`#detail-${day.day}-1`).waitFor();
+    assert(new URLSearchParams(page.url().split("?")[1]).get("chunk") === "1");
+    await page.reload();
+    await page.locator(`#detail-${day.day}-1`).waitFor();
+    assert.equal(await page.locator(".chunk-name").count(), 1);
+    await page.getByRole("link", { name: "گزارش چانک ۱", exact: true }).click();
+    await page
+      .getByRole("heading", { name: "گزارش چانک ۱", exact: true })
+      .waitFor();
+    await page
+      .getByRole("button", { name: "مشاهده مولفه‌های فرامولفه 0", exact: true })
+      .click();
+    await page
+      .getByRole("button", {
+        name: "مشاهده داده‌های مولفه component-normal",
+        exact: true,
+      })
+      .waitFor();
+    assert.equal(
+      await page
+        .getByRole("button", {
+          name: "مشاهده داده‌های مولفه component-attack",
+          exact: true,
+        })
+        .count(),
+      0,
+    );
+    await page
+      .getByRole("button", {
+        name: "مشاهده داده‌های مولفه component-normal",
+        exact: true,
+      })
+      .click();
+    await page
+      .getByRole("button", { name: "جزئیات داده اصلی obs-1-0", exact: true })
+      .click();
+    await page
+      .locator(".hi-flow")
+      .getByText("BENIGN", { exact: true })
+      .waitFor();
+    assert(new URLSearchParams(page.url().split("?")[1]).get("chunk") === "1");
+    await page.reload();
+    await page
+      .locator(".hi-flow")
+      .getByText("BENIGN", { exact: true })
+      .waitFor();
+    await page
+      .getByRole("link", { name: "بازگشت به جزئیات چانک ۱", exact: true })
+      .click();
+    await page.locator(`#detail-${day.day}-1`).waitFor();
+    await page.getByRole("link", { name: "گزارش چانک ۱", exact: true }).click();
+    await page
+      .getByRole("button", { name: "نمایش گزارش کل روز", exact: true })
+      .click();
+    await page
+      .getByRole("heading", { name: "گزارش روز و داده‌های اصلی", exact: true })
+      .waitFor();
+    assert(!new URLSearchParams(page.url().split("?")[1]).has("chunk"));
+    await page.goto(base + "/#/days?day=" + day.day + "&chunk=0");
+    await page.locator(`#detail-${day.day}-0`).waitFor();
+    await page.goto(base + "/#/visualizations?day=" + day.day + "&chunk=-1");
+    await page
+      .getByRole("alert")
+      .filter({ hasText: "شمارهٔ چانک معتبر نیست" })
+      .waitFor();
+    assert.equal(await page.locator(".hi-explorer").count(), 0);
+    assert.equal(
+      posts,
+      postsBeforeNavigation,
+      "Navigation must never auto-build a report",
+    );
     assert.deepEqual(errors, []);
     console.log(
       "PASS: explicit durable report, retry key, 10-second polling, attack/mixed/normal hierarchy filters, meta→component→original flow, exact raw/normalized separation, missing raw, pagination/IP/representative filters, pinned deep-link reload, mobile and no browser errors.",

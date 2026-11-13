@@ -31,6 +31,7 @@ import {
 } from "../../api/inspection";
 import "./hierarchy-explorer.css";
 export interface InspectionNavigation {
+  chunkIndex?: number;
   reportId?: string;
   metaId?: string;
   componentId?: string;
@@ -156,8 +157,12 @@ export default function HierarchyExplorer({
 }) {
   const [local, setLocal] = useState<InspectionNavigation>({});
   const view = navigation ?? local;
-  const navigate = (v: InspectionNavigation) =>
-    onNavigate ? onNavigate(v) : setLocal(v);
+  const navigate = (v: InspectionNavigation) => {
+    const next = { chunkIndex: view.chunkIndex, ...v };
+    return onNavigate ? onNavigate(next) : setLocal(next);
+  };
+  const chunkQuery =
+    view.chunkIndex === undefined ? "" : `&chunk_index=${view.chunkIndex}`;
   const context = useApi<InspectionContext>(inspectionRoot(day.day));
   const explicit = useApi<InspectionReport>(
     view.reportId
@@ -193,7 +198,7 @@ export default function HierarchyExplorer({
   const [ip, setIp] = useState("");
   const metas = useApi<Page<InspectionMeta>>(
     prefix
-      ? `${prefix}metas/?limit=10&offset=${metaOffset}&label=${metaLabel}`
+      ? `${prefix}metas/?limit=10&offset=${metaOffset}&label=${metaLabel}${chunkQuery}`
       : null,
   );
   const componentPath =
@@ -202,7 +207,7 @@ export default function HierarchyExplorer({
       : null;
   const components = useApi<Page<InspectionComponent>>(
     componentPath
-      ? `${componentPath}?limit=10&offset=${componentOffset}&label=${componentLabel}`
+      ? `${componentPath}?limit=10&offset=${componentOffset}&label=${componentLabel}${chunkQuery}`
       : null,
   );
   const observationPath =
@@ -469,6 +474,33 @@ export default function HierarchyExplorer({
           برچسب حمله از دادهٔ ذخیره‌شده خوانده می‌شود.
         </p>
       )}
+      {view.chunkIndex !== undefined && (
+        <div className="hi-chunk-scope" role="note">
+          <div>
+            <Layers3 size={16} />
+            <strong>مرور چانک {number(view.chunkIndex)}</strong>
+            <span>
+              فرامولفه‌های مرتبط و مولفه‌های همین چانک نمایش داده می‌شوند؛ آمار
+              خلاصه و آمار هر فرامولفه مربوط به کل گزارش ذخیره‌شده است.
+            </span>
+          </div>
+          <button
+            className="days-text-button"
+            onClick={() => {
+              setMetaOffset(0);
+              setComponentOffset(0);
+              setObservationOffset(0);
+              navigate({
+                reportId: report?.id,
+                jobId: view.jobId,
+                chunkIndex: undefined,
+              });
+            }}
+          >
+            نمایش گزارش کل روز
+          </button>
+        </div>
+      )}
       {report && (
         <>
           <div className="hi-summary">
@@ -486,6 +518,15 @@ export default function HierarchyExplorer({
               </div>
             ))}
           </div>
+          {view.chunkIndex !== undefined &&
+            report.included_chunk_indices &&
+            !report.included_chunk_indices.includes(view.chunkIndex) && (
+              <p className="hi-warning" role="status">
+                چانک {number(view.chunkIndex)} در این نسخهٔ گزارش وجود ندارد.
+                می‌توانید گزارش را از خروجی‌های آمادهٔ فعلی دوباره بسازید یا
+                جزئیات چانک را باز کنید.
+              </p>
+            )}
           {report.included_chunk_indices && (
             <p className="hi-note">
               چانک‌های گزارش:{" "}

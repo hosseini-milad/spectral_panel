@@ -303,3 +303,32 @@
 .hi-optional-diagram summary {
   cursor: pointer;
 }
+
+.hi-chunk-scope {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 14px 16px;
+  margin-block: 16px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  border-radius: 9px;
+  font-size: 11px;
+}
+.hi-chunk-scope > div {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.hi-chunk-scope strong,
+.hi-chunk-scope svg {
+  color: var(--accent);
+}
+.hi-chunk-scope span {
+  color: var(--text-secondary);
+  font-size: 10px;
+  line-height: 1.9;
+}

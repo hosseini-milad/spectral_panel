@@ -1,6 +1,10 @@
 import { Fragment, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { isISODate } from "../lib/dayNavigation";
+import {
+  isISODate,
+  inspectionPath,
+  parseChunkIndex,
+} from "../lib/dayNavigation";
 import {
   CalendarDays,
   Database,
@@ -11,6 +15,7 @@ import {
   FlaskConical,
   ArrowUpLeft,
   CalendarSearch,
+  FileText,
   Info,
 } from "lucide-react";
 import { dateLabel, dayStatusLabels } from "../data/days";
@@ -89,6 +94,10 @@ export function DaysPage() {
   function setDate(date: string) {
     setParams((previous) => {
       const next = new URLSearchParams(previous);
+      if (next.get("day") !== date) {
+        next.delete("chunk");
+        next.delete("tab");
+      }
       next.set("day", date);
       return next;
     });
@@ -106,7 +115,10 @@ export function DaysPage() {
     setExpanded(expanded === date ? null : date);
     setCalendarKey((key) => key + 1);
   }
-  if (requested !== null && !isISODate(requested)) {
+  const invalidChunk =
+    params.has("chunk") &&
+    (parseChunkIndex(params.get("chunk")) === undefined || !requested);
+  if ((requested !== null && !isISODate(requested)) || invalidChunk) {
     return (
       <main id="main-content" className="main-content days-page" tabIndex={-1}>
         <div className="page-heading">
@@ -117,8 +129,16 @@ export function DaysPage() {
         </div>
         <div className="days-card invalid-day-link" role="alert">
           <CalendarSearch size={30} />
-          <h2>تاریخ آدرس معتبر نیست</h2>
-          <p>پارامتر day باید تاریخ معتبر میلادی با قالب YYYY-MM-DD باشد.</p>
+          <h2>
+            {invalidChunk
+              ? "شمارهٔ چانک آدرس معتبر نیست"
+              : "تاریخ آدرس معتبر نیست"}
+          </h2>
+          <p>
+            {invalidChunk
+              ? "چانک باید شمارهٔ صحیح از صفر و همراه با روز مشخص باشد."
+              : "پارامتر day باید تاریخ معتبر میلادی با قالب YYYY-MM-DD باشد."}
+          </p>
           <Link className="days-text-button" to="/days">
             مشاهدهٔ روزهای موجود
             <ArrowUpLeft size={15} />
@@ -337,10 +357,22 @@ export function DaysPage() {
                           </span>
                         </td>
                         <td>
-                          <ChevronDown
-                            size={17}
-                            className={`row-chevron${isOpen ? " open" : ""}`}
-                          />
+                          <div className="day-row-actions">
+                            <Link
+                              className="day-context-link"
+                              to={inspectionPath(day.day)}
+                              onClick={(event) => event.stopPropagation()}
+                              aria-label={`گزارش روز ${day.day}`}
+                            >
+                              <FileText size={13} />
+                              گزارش روز
+                              <ArrowUpLeft size={13} />
+                            </Link>
+                            <ChevronDown
+                              size={17}
+                              className={`row-chevron${isOpen ? " open" : ""}`}
+                            />
+                          </div>
                         </td>
                       </tr>
                       {isOpen && (

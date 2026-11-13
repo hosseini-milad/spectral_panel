@@ -8,7 +8,12 @@ import {
   displayNumber as number,
 } from "../api/days";
 import { dateLabel } from "../data/days";
-import { isISODate, dayDetailsPath } from "../lib/dayNavigation";
+import {
+  isISODate,
+  dayDetailsPath,
+  parseChunkIndex,
+  chunkDetailsPath,
+} from "../lib/dayNavigation";
 import { useApi } from "../hooks/useApi";
 import type { InspectionNavigation } from "../components/days/HierarchyExplorer";
 import "../components/days/hierarchy-explorer.css";
@@ -27,7 +32,11 @@ export function VisualizationsPage() {
   const selected = requested ?? latest.data?.results[0]?.day;
   const date = selected && isISODate(selected) ? selected : null;
   const day = useApi<InventoryDay>(date ? apiPath(`days/${date}/`) : null);
+  const chunkIndex = parseChunkIndex(params.get("chunk"));
+  const invalidChunk =
+    params.has("chunk") && (chunkIndex === undefined || !requested);
   const navigation: InspectionNavigation = {
+    chunkIndex,
     reportId: params.get("inspection_report") ?? undefined,
     metaId: params.get("meta") ?? undefined,
     componentId: params.get("component") ?? undefined,
@@ -38,6 +47,9 @@ export function VisualizationsPage() {
     setParams((previous) => {
       const q = new URLSearchParams(previous);
       q.set("day", date!);
+      if (next.chunkIndex !== undefined)
+        q.set("chunk", String(next.chunkIndex));
+      else q.delete("chunk");
       for (const [field, key] of [
         ["reportId", "inspection_report"],
         ["metaId", "meta"],
@@ -60,7 +72,11 @@ export function VisualizationsPage() {
       <div className="page-heading">
         <div>
           <p className="eyebrow">تحلیل و پردازش / گزارش قابل مرور</p>
-          <h1>گزارش روز و داده‌های اصلی</h1>
+          <h1>
+            {chunkIndex === undefined
+              ? "گزارش روز و داده‌های اصلی"
+              : `گزارش چانک ${number(chunkIndex)}`}
+          </h1>
           <p className="page-description">
             از فرامولفه تا مشاهده و IPهای رکورد اصلی پیش بروید؛ هر سطح به نسخهٔ
             مشخص گزارش متصل است.
@@ -139,7 +155,13 @@ export function VisualizationsPage() {
           همگام کنید.
         </p>
       )}
-      {day.data && (
+      {invalidChunk && (
+        <p role="alert" className="hi-warning">
+          شمارهٔ چانک معتبر نیست؛ لینک باید روز مشخص و شمارهٔ صحیح چانک از صفر
+          داشته باشد.
+        </p>
+      )}
+      {day.data && !invalidChunk && (
         <>
           <div className="hi-report-day">
             <span>
@@ -147,8 +169,16 @@ export function VisualizationsPage() {
               {dateLabel(day.data.day)} · {number(day.data.raw_records)} رکورد
               خام در اطلاعات روز
             </span>
-            <Link to={dayDetailsPath(day.data.day)}>
-              روزها و چانک‌ها
+            <Link
+              to={
+                chunkIndex === undefined
+                  ? dayDetailsPath(day.data.day)
+                  : chunkDetailsPath(day.data.day, chunkIndex)
+              }
+            >
+              {chunkIndex === undefined
+                ? "روزها و چانک‌ها"
+                : `بازگشت به جزئیات چانک ${number(chunkIndex)}`}
               <ArrowUpLeft size={14} />
             </Link>
           </div>
@@ -160,7 +190,7 @@ export function VisualizationsPage() {
             }
           >
             <HierarchyExplorer
-              key={day.data.day}
+              key={`${day.data.day}:${chunkIndex ?? "all"}`}
               day={day.data}
               navigation={navigation}
               onNavigate={navigate}

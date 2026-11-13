@@ -1351,3 +1351,40 @@
 .chunk-schematic-dialog .chunk-schematic-image { margin-block: 16px; }
 @media (max-width: 600px) { .chunk-schematic-dialog { padding: 12px; width: calc(100vw - 16px); } }
 .chunk-schematic-dialog-heading { position: sticky; top: 0; z-index: 1; background: var(--surface); padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+
+
+.day-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  white-space: nowrap;
+}
+.day-context-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 10px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-soft);
+}
+.day-context-link:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+}
+.day-context-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+@media (max-width: 600px) {
+  .day-row-actions {
+    gap: 6px;
+  }
+  .day-context-link {
+    padding: 7px;
+  }
+}

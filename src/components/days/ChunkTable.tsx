@@ -1,5 +1,19 @@
-import { Fragment, lazy, Suspense, useState } from "react";
-import { AlertCircle, ChevronDown, Check, Search, Layers3 } from "lucide-react";
+import { Fragment, lazy, Suspense, useState, useEffect } from "react";
+import {
+  AlertCircle,
+  ChevronDown,
+  Check,
+  Search,
+  Layers3,
+  FileText,
+  ArrowUpLeft,
+} from "lucide-react";
+import { Link, useSearchParams } from "react-router-dom";
+import {
+  parseChunkIndex,
+  chunkDetailsPath,
+  inspectionPath,
+} from "../../lib/dayNavigation";
 import { dayStatusLabels, stages, normalizeSearch } from "../../data/days";
 import {
   apiPath,
@@ -23,11 +37,22 @@ export function chunkStages(chunk: InventoryChunk): (boolean | null)[] {
   ];
 }
 export function ChunkTable({ day }: { day: InventoryDay }) {
-  const [expanded, setExpanded] = useState<number | null>(null);
+  const [params, setParams] = useSearchParams();
+  const requestedChunk =
+    params.get("day") === day.day
+      ? parseChunkIndex(params.get("chunk"))
+      : undefined;
+  const [expanded, setExpanded] = useState<number | null>(
+    requestedChunk ?? null,
+  );
   const [status, setStatus] = useState("all");
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(
+    requestedChunk === undefined ? "" : String(requestedChunk),
+  );
   const [page, setPage] = useState(0);
-  const value = useDebounced(normalizeSearch(search));
+  const debounced = useDebounced(normalizeSearch(search));
+  const value =
+    requestedChunk === undefined ? debounced : String(requestedChunk);
   const match = /^(?:(?:chunk-|چانک\s*)?)(\d+)$/.exec(value);
   const searchError = Boolean(value && !match);
   const size = 4;
@@ -41,6 +66,24 @@ export function ChunkTable({ day }: { day: InventoryDay }) {
           chunk_index: match ? Number(match[1]) : undefined,
         }),
   );
+  useEffect(() => {
+    if (requestedChunk === undefined) return;
+    setSearch(String(requestedChunk));
+    setExpanded(requestedChunk);
+    setPage(0);
+    setStatus("all");
+  }, [requestedChunk]);
+  useEffect(() => {
+    if (
+      requestedChunk === undefined ||
+      expanded !== requestedChunk ||
+      !resource.data?.results.some((c) => c.chunk_index === requestedChunk)
+    )
+      return;
+    document
+      .getElementById(`detail-${day.day}-${requestedChunk}`)
+      ?.scrollIntoView({ block: "start" });
+  }, [requestedChunk, expanded, resource.data, day.day]);
   const changed =
     resource.data && resource.data.snapshot_id !== day.snapshot_id;
   const visible = changed ? [] : (resource.data?.results ?? []);
@@ -71,6 +114,12 @@ export function ChunkTable({ day }: { day: InventoryDay }) {
               value={search}
               onChange={(event) => {
                 setSearch(event.target.value);
+                if (params.has("chunk"))
+                  setParams((previous) => {
+                    const next = new URLSearchParams(previous);
+                    next.delete("chunk");
+                    return next;
+                  });
                 setPage(0);
                 setExpanded(null);
               }}
@@ -109,7 +158,7 @@ export function ChunkTable({ day }: { day: InventoryDay }) {
               <th scope="col">پیشرفت</th>
               <th scope="col">زمان سپری‌شده</th>
               <th scope="col">
-                <span className="sr-only">جزئیات</span>
+                <span className="sr-only">گزارش و جزئیات</span>
               </th>
             </tr>
           </thead>
@@ -164,10 +213,33 @@ export function ChunkTable({ day }: { day: InventoryDay }) {
                   </td>
                   <td className="duration-cell">—</td>
                   <td>
-                    <ChevronDown
-                      size={16}
-                      className={`row-chevron${expanded === chunk.chunk_index ? " open" : ""}`}
-                    />
+                    <div className="day-row-actions">
+                      <Link
+                        className="day-context-link"
+                        to={inspectionPath(day.day, chunk.chunk_index)}
+                        aria-label={`گزارش چانک ${number(chunk.chunk_index)}`}
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <FileText size={13} />
+                        گزارش
+                      </Link>
+                      <Link
+                        className="day-context-link"
+                        to={chunkDetailsPath(day.day, chunk.chunk_index)}
+                        aria-label={`جزئیات چانک ${number(chunk.chunk_index)}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setExpanded(chunk.chunk_index);
+                        }}
+                      >
+                        جزئیات
+                        <ArrowUpLeft size={13} />
+                      </Link>
+                      <ChevronDown
+                        size={16}
+                        className={`row-chevron${expanded === chunk.chunk_index ? " open" : ""}`}
+                      />
+                    </div>
                   </td>
                 </tr>
                 {expanded === chunk.chunk_index && (
