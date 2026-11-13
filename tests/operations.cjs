@@ -36,6 +36,7 @@ let posts = 0;
 let running = false;
 let cancelPosts = 0;
 let finishCancelled = false;
+let showTelemetry = false;
 const readTimes = [];
 const bodies = [];
 const makeRun = (id, body) => ({
@@ -255,6 +256,32 @@ const makeRun = (id, body) => ({
             ? {
                 ...run,
                 status: "running",
+                ...(showTelemetry
+                  ? {
+                      execution_policy: "continue_on_chunk_error_v1",
+                      failed_chunks: [run.chunk_start],
+                      recent_errors: [
+                        {
+                          chunk_index: run.chunk_start,
+                          stage: "components",
+                          error: { code: "stage_timeout" },
+                          finished_at: day.updated_at,
+                        },
+                      ],
+                      current_task: {
+                        chunk_index: run.chunk_start + 1,
+                        stage: "representatives",
+                        started_at: day.updated_at,
+                        elapsed_seconds: 620,
+                        timeout_seconds: 900,
+                        remaining_seconds: 280,
+                        last_output_at: day.updated_at,
+                        seconds_since_output: 300,
+                        phase: "centralities",
+                        phase_elapsed_seconds: 300,
+                      },
+                    }
+                  : {}),
                 current_chunk: run.chunk_start,
                 current_stage: "sample",
                 progress: { ...run.progress, completed_units: 2, percent: 5 },
@@ -394,6 +421,24 @@ const makeRun = (id, body) => ({
         path: process.env.TEST_OUTPUT_DIR + "/operations-real-mobile.png",
         fullPage: true,
       });
+    showTelemetry = true;
+    await page.reload();
+    await page
+      .locator(".op-task-runtime")
+      .getByText("محاسبهٔ مرکزیت گره‌ها", { exact: true })
+      .waitFor();
+    await page
+      .locator(".op-task-runtime")
+      .getByText("۱۰ دقیقه و ۲۰ ثانیه", { exact: true })
+      .waitFor();
+    await page
+      .locator(".op-task-runtime")
+      .getByText("۱۵ دقیقه و ۰ ثانیه", { exact: true })
+      .waitFor();
+    await page
+      .locator(".op-chunk-failures")
+      .getByText("مهلت مرحله تمام شد", { exact: false })
+      .waitFor();
     const cancel = page.getByRole("button", {
       name: "لغو ادامهٔ پردازش",
       exact: true,

@@ -4,9 +4,17 @@ import {
   Play,
   LoaderCircle,
   FileCheck2,
+  Clock3,
+  AlertTriangle,
 } from "lucide-react";
 import { number } from "../../data/days";
-import { statusLabels, type Run } from "../../api/operations";
+import {
+  statusLabels,
+  phaseLabels,
+  durationLabel,
+  type ActiveTask,
+  type Run,
+} from "../../api/operations";
 export function OperationStep({
   index,
   title,
@@ -16,6 +24,7 @@ export function OperationStep({
   busy,
   onRun,
   runId,
+  activeTask,
 }: {
   index: number;
   title: string;
@@ -25,6 +34,7 @@ export function OperationStep({
   busy: boolean;
   onRun: () => void;
   runId?: string;
+  activeTask?: ActiveTask | null;
 }) {
   const status = step?.status ?? "pending";
   return (
@@ -66,6 +76,46 @@ export function OperationStep({
             <span>
               {number(step.completed_units)} / {number(step.total_units)}
             </span>
+          </div>
+        )}
+        {!!step?.failed_units && (
+          <p className="op-step-errors">
+            <AlertTriangle size={13} />
+            {number(step.failed_units)} چانک ناموفق
+            {step.blocked_units
+              ? ` · ${number(step.blocked_units)} مورد اجرا نشده به علت خطای پیش‌نیاز`
+              : ""}
+          </p>
+        )}
+        {activeTask && (
+          <div className="op-task-runtime" role="status">
+            <div>
+              <Clock3 size={14} />
+              <strong>چانک {number(activeTask.chunk_index)}</strong>
+              <span>
+                {phaseLabels[activeTask.phase ?? ""] ?? "در حال پردازش"}
+              </span>
+            </div>
+            <dl>
+              <div>
+                <dt>زمان سپری‌شده</dt>
+                <dd>{durationLabel(activeTask.elapsed_seconds)}</dd>
+              </div>
+              <div>
+                <dt>مهلت این مرحله</dt>
+                <dd>
+                  {activeTask.timeout_seconds === null
+                    ? "برای این اجرای قدیمی ثبت نشده"
+                    : durationLabel(activeTask.timeout_seconds)}
+                </dd>
+              </div>
+            </dl>
+            <p>
+              {activeTask.seconds_since_output === null
+                ? "هنوز خروجی متنی تازه‌ای ثبت نشده است."
+                : `آخرین خروجی مرحله: ${durationLabel(activeTask.seconds_since_output)} پیش.`}{" "}
+              نبود خروجی تازه به‌تنهایی نشانهٔ خطا نیست.
+            </p>
           </div>
         )}
         <div className="op-step-footer">

@@ -2390,3 +2390,87 @@
   color: var(--text-secondary);
   background: var(--surface-soft);
 }
+
+.op-task-runtime {
+  padding: 12px 14px;
+  margin-bottom: 15px;
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+  border-radius: 9px;
+}
+.op-task-runtime > div {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--accent);
+}
+.op-task-runtime > div > span {
+  color: var(--text-secondary);
+}
+.op-task-runtime dl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 28px;
+  margin-block: 12px 8px;
+}
+.op-task-runtime dl > div {
+  display: grid;
+  gap: 4px;
+}
+.op-task-runtime dt {
+  color: var(--text-muted);
+  font-size: 9px;
+}
+.op-task-runtime dd {
+  color: var(--text);
+  font-size: 11px;
+  margin: 0;
+}
+.op-task-runtime p {
+  color: var(--text-muted);
+  font-size: 9px;
+  line-height: 1.9;
+  margin: 0;
+}
+.op-step-errors {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--warning-text);
+  font-size: 10px;
+  line-height: 1.9;
+  margin-bottom: 12px;
+}
+.op-chunk-failures {
+  border: 1px solid var(--warning-border);
+  background: var(--warning-bg);
+  color: var(--warning-text);
+  padding: 15px 17px;
+  border-radius: 10px;
+  margin-block: 15px;
+  font-size: 11px;
+}
+.op-chunk-failures ul {
+  list-style: none;
+  padding: 0;
+  margin-block: 10px;
+}
+.op-chunk-failures li {
+  display: grid;
+  gap: 4px;
+  padding-block: 7px;
+  font-size: 10px;
+  line-height: 1.9;
+  border-bottom: 1px solid var(--warning-border);
+}
+.op-chunk-failures li:last-child {
+  border: 0;
+}
+.op-chunk-failures li b {
+  font-weight: 500;
+}
+.op-chunk-failures small {
+  font-size: 9px;
+}

@@ -13,6 +13,7 @@ export type Selection =
   | { mode: "all" };
 export interface Settings {
   chunk_size: number;
+  stage_timeout_seconds: number;
   batch_size: number;
   sample_ratio: number;
   representative_ratio: number;
@@ -20,9 +21,49 @@ export interface Settings {
   threshold: number;
   degree_cap: number;
 }
+export interface ActiveTask {
+  chunk_index: number;
+  stage: Stage;
+  started_at: string;
+  elapsed_seconds: number;
+  timeout_seconds: number | null;
+  remaining_seconds: number | null;
+  last_output_at: string | null;
+  seconds_since_output: number | null;
+  phase: string | null;
+  phase_elapsed_seconds: number | null;
+}
+export const phaseLabels: Record<string, string> = {
+  starting: "آماده‌سازی مرحله",
+  building_graph: "آماده‌سازی گراف",
+  communities: "استخراج اجتماع‌ها",
+  centralities: "محاسبهٔ مرکزیت گره‌ها",
+  anomaly_scores: "محاسبهٔ امتیاز ناهنجاری",
+  combined_scores: "ترکیب امتیاز گره‌ها",
+  representative_selection: "انتخاب و فاصله‌گذاری نماینده‌ها",
+  saving_representatives: "ذخیرهٔ نماینده‌ها",
+  rendering_graph: "تولید تصویر گراف",
+  validating_components: "بررسی و به‌روزرسانی مولفه‌ها",
+};
+export function durationLabel(seconds: number) {
+  const value = Math.max(0, Math.floor(seconds));
+  const n = new Intl.NumberFormat("fa-IR");
+  return value < 60
+    ? `${n.format(value)} ثانیه`
+    : `${n.format(Math.floor(value / 60))} دقیقه و ${n.format(value % 60)} ثانیه`;
+}
 export interface Run {
   id: string;
   day: string;
+  execution_policy?: string;
+  current_task?: ActiveTask | null;
+  failed_chunks?: number[];
+  recent_errors?: {
+    chunk_index: number;
+    stage: Stage;
+    error: { code: string };
+    finished_at: string | null;
+  }[];
   status: string;
   created_at: string;
   started_at: string | null;
@@ -43,6 +84,10 @@ export interface Run {
   configuration_version: string;
   configuration_hash: string;
   progress: {
+    failed_units?: number;
+    blocked_units?: number;
+    settled_units?: number;
+    processed_percent?: number;
     completed_units: number;
     total_units: number;
     reused_units: number;
@@ -54,6 +99,8 @@ export interface Run {
     status: string;
     completed_units: number;
     total_units: number;
+    failed_units?: number;
+    blocked_units?: number;
     percent: number;
     input: number | null;
     output: number | null;
@@ -131,8 +178,18 @@ const messages: Record<string, string> = {
   incomplete_output: "خروجی مرحله کامل نیست",
   source_changed: "تعداد رکوردهای مبدأ تغییر کرده است",
   worker_interrupted: "worker پیش از پایان اجرا متوقف شده است",
+  stage_timeout:
+    "مهلت مرحله تمام شد؛ مراحل وابستهٔ این چانک اجرا نمی‌شوند و پردازش به چانک بعدی می‌رود",
+  stage_process_failed:
+    "پردازش مرحله بدون نتیجهٔ معتبر پایان یافت؛ این چانک ناموفق ثبت شد",
+  stage_cleanup_failed:
+    "پایان پردازش قبلی تأیید نشد؛ اجرا برای جلوگیری از تداخل متوقف شد",
+  database_unavailable:
+    "ارتباط با پایگاه داده برقرار نیست؛ ادامهٔ امن پردازش ممکن نشد",
+  chunks_failed:
+    "پردازش با چانک‌های ناموفق پایان یافت؛ خطای هر چانک در فهرست ثبت شده است",
   operation_failed:
-    "اجرای مرحله ناموفق بود؛ جزئیات فنی را در لاگ سرور بررسی کنید",
+    "اجرای این مرحله ناموفق بود؛ جزئیات فنی در لاگ سرور ثبت شده است",
 };
 export const eventMessage = (code: string) =>
   messages[code] ?? "وضعیت اجرا به‌روزرسانی شد";

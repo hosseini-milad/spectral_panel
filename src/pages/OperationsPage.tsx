@@ -59,6 +59,7 @@ export function OperationsPage() {
   const [eventOffset, setEventOffset] = useState(0);
   const [settings, setSettings] = useState<Settings>({
     chunk_size: 20000,
+    stage_timeout_seconds: 900,
     batch_size: 2000,
     sample_ratio: 0.1,
     representative_ratio: 0.1,
@@ -350,7 +351,12 @@ export function OperationsPage() {
                 setStart(range.start_chunk);
                 setEnd(range.end_chunk);
               }}
-              onSettings={setSettings}
+              onSettings={(saved) =>
+                setSettings({
+                  ...saved,
+                  stage_timeout_seconds: saved.stage_timeout_seconds ?? 900,
+                })
+              }
               onRefresh={day.retry}
             />
           )}
@@ -452,6 +458,28 @@ export function OperationsPage() {
               {run ? "وضعیت اجرای انتخاب‌شده" : "هنوز اجرایی انتخاب نشده"}
             </span>
           </div>
+          {!!run?.recent_errors?.length && (
+            <div className="op-chunk-failures" role="alert">
+              <strong>
+                {number(run.failed_chunks?.length ?? run.recent_errors.length)}{" "}
+                چانک ناموفق
+                {running ? "؛ پردازش سایر چانک‌ها ادامه دارد" : " در این اجرا"}
+              </strong>
+              <ul>
+                {run.recent_errors.map((item) => (
+                  <li key={`${item.chunk_index}:${item.stage}`}>
+                    <b>
+                      چانک {number(item.chunk_index)} · {labels[item.stage]}
+                    </b>
+                    <span>{eventMessage(item.error.code)}</span>
+                  </li>
+                ))}
+              </ul>
+              <small>
+                آخرین خطاها؛ فهرست کامل کارها و رویدادها پایین صفحه است.
+              </small>
+            </div>
+          )}
           <ol className="op-steps-list">
             {stages.map((stage, index) => {
               const step = run?.stages.find((s) => s.stage === stage);
@@ -466,6 +494,9 @@ export function OperationsPage() {
                   busy={sending}
                   onRun={() => void submit(stage)}
                   runId={run?.id}
+                  activeTask={
+                    run?.current_task?.stage === stage ? run.current_task : null
+                  }
                 />
               );
             })}
@@ -544,6 +575,13 @@ export function OperationsPage() {
                     ["neighbors", "تعداد همسایه", 1, 100, 1],
                     ["threshold", "آستانهٔ کسینوسی", -1, 1, 0.001],
                     ["degree_cap", "سقف درجه", 1, 1000, 1],
+                    [
+                      "stage_timeout_seconds",
+                      "مهلت هر مرحله (ثانیه)",
+                      30,
+                      86400,
+                      30,
+                    ],
                   ] as const
                 ).map(([key, label, min, max, step]) => (
                   <label key={key}>
@@ -590,12 +628,19 @@ export function OperationsPage() {
                 </div>
                 <div className="op-total-progress">
                   <div>
-                    <span>پیشرفت چانک‌ـ‌مرحله‌های تکمیل‌شده</span>
-                    <strong>{number(run.progress.percent)}٪</strong>
+                    <span>پیشرفت رسیدگی به چانک‌ـ‌مرحله‌ها</span>
+                    <strong>
+                      {number(
+                        run.progress.processed_percent ?? run.progress.percent,
+                      )}
+                      ٪
+                    </strong>
                   </div>
                   <progress
                     max={100}
-                    value={run.progress.percent}
+                    value={
+                      run.progress.processed_percent ?? run.progress.percent
+                    }
                     aria-label="پیشرفت کل عملیات"
                   />
                 </div>
@@ -610,8 +655,12 @@ export function OperationsPage() {
                 </div>
                 <p className="op-run-help">
                   {number(run.progress.completed_units)} از{" "}
-                  {number(run.progress.total_units)} واحد ·{" "}
+                  {number(run.progress.total_units)} واحد موفق ·{" "}
                   {number(run.progress.reused_units)} خروجی استفاده‌شده
+                  {!!run.progress.failed_units &&
+                    ` · ${number(run.progress.failed_units)} ناموفق`}
+                  {!!run.progress.blocked_units &&
+                    ` · ${number(run.progress.blocked_units)} اجرا نشده به علت خطای پیش‌نیاز`}
                   {run.current_chunk !== null
                     ? ` · چانک ${number(run.current_chunk)}`
                     : ""}
@@ -654,6 +703,12 @@ export function OperationsPage() {
                 {cancelError?.id === run.id && (
                   <p className="op-failure-note" role="alert">
                     {cancelError.message}
+                  </p>
+                )}
+                {running && run.execution_policy === "legacy_stop_on_error" && (
+                  <p className="op-failure-note">
+                    این اجرا با worker قدیمی شروع شده است؛ ادامه پس از خطا و
+                    مهلت زمانی به نسخهٔ جدید worker نیاز دارد.
                   </p>
                 )}
                 {running && !run.worker.online && (
