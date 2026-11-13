@@ -5,14 +5,12 @@ import {
   ChevronDown,
   Check,
   CirclePlay,
-  Info,
   ListChecks,
   LoaderCircle,
   Layers3,
   Database,
   Settings2,
   ArrowUpLeft,
-  ShieldCheck,
   Square,
   Clock3,
 } from "lucide-react";
@@ -23,6 +21,8 @@ import { useOperations } from "../hooks/useOperations";
 import {
   submitOperation,
   cancelOperation,
+  retryFailedOperation,
+  type Run,
   stages,
   labels,
   statusLabels,
@@ -54,12 +54,11 @@ export function OperationsPage() {
   const [end, setEnd] = useState(9);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [queueOffset, setQueueOffset] = useState(0);
   const [taskOffset, setTaskOffset] = useState(0);
   const [eventOffset, setEventOffset] = useState(0);
   const [settings, setSettings] = useState<Settings>({
     chunk_size: 20000,
-    stage_timeout_seconds: 900,
+    stage_timeout_seconds: 300,
     batch_size: 2000,
     sample_ratio: 0.1,
     representative_ratio: 0.1,
@@ -70,13 +69,26 @@ export function OperationsPage() {
   useEffect(() => {
     setSettings((s) => ({ ...s, chunk_size: day.data?.chunk_size ?? 20000 }));
   }, [day.data?.day, day.data?.chunk_size]);
-  const monitor = useOperations(
-    dayCode,
-    runId,
-    queueOffset,
-    taskOffset,
-    eventOffset,
+  const monitor = useOperations(dayCode, runId, taskOffset, eventOffset);
+  const latestRun = useApi<Page<Run>>(
+    dayCode && !runId
+      ? apiPath("operations/runs/", { day: dayCode, limit: 1 })
+      : null,
   );
+  useEffect(() => {
+    const id = latestRun.data?.results[0]?.id;
+    if (!id || runId || !dayCode) return;
+    setParams(
+      (previous) => {
+        if (previous.get("run") || previous.get("day") !== dayCode)
+          return previous;
+        const next = new URLSearchParams(previous);
+        next.set("run", id);
+        return next;
+      },
+      { replace: true },
+    );
+  }, [latestRun.data, runId, dayCode, setParams]);
   const run = monitor.run;
   const [sending, setSending] = useState(false);
   const [cancellingRun, setCancellingRun] = useState<string | null>(null);
@@ -90,6 +102,7 @@ export function OperationsPage() {
   const cancellingRef = useRef(false);
   const [submitError, setSubmitError] = useState("");
   const inFlight = useRef(false);
+  const savedRetry = useRef<{ identity: string; key: string } | null>(null);
   const savedRequest = useRef<{ identity: string; key: string } | null>(null);
   const selection: Selection =
     mode === "single"
@@ -193,6 +206,32 @@ export function OperationsPage() {
       setSending(false);
     }
   }
+  async function retryFailed() {
+    if (!run || running || inFlight.current || !run.failed_chunks?.length)
+      return;
+    const timeout = settings.stage_timeout_seconds;
+    const identity = `${run.id}:${timeout}`;
+    if (savedRetry.current?.identity !== identity)
+      savedRetry.current = { identity, key: crypto.randomUUID() };
+    inFlight.current = true;
+    setSending(true);
+    setSubmitError("");
+    try {
+      const result = await retryFailedOperation(
+        run.id,
+        timeout,
+        savedRetry.current.key,
+      );
+      savedRetry.current = null;
+      chooseRun(result.run.id);
+      monitor.retry();
+    } catch (error) {
+      setSubmitError((error as Error).message);
+    } finally {
+      inFlight.current = false;
+      setSending(false);
+    }
+  }
   const logs = (monitor.events?.results ?? []).map((e) => ({
     id: String(e.sequence),
     time: e.time,
@@ -236,26 +275,12 @@ export function OperationsPage() {
         <div>
           <p className="eyebrow">تحلیل و پردازش / مسیر آماده‌سازی داده</p>
           <h1>عملیات و پردازش</h1>
-          <p className="page-description">
-            روز و دامنهٔ چانک‌ها را انتخاب کنید و عملیات را در صف قرار دهید.
-          </p>
         </div>
         <span className="op-mock-badge">
           <Database size={15} />
           اطلاعات سرور
         </span>
       </div>
-      <p className="op-mock-notice">
-        <Info size={15} />
-        <span>
-          پردازش واقعی است؛ خروجی‌های سازگار استفاده می‌شوند. وضعیت هر ۱۰ ثانیه
-          از سرور دریافت می‌شود.
-        </span>
-        <span className="op-sequential-hint">
-          <ListChecks size={14} />
-          اجرای ترتیبی مراحل
-        </span>
-      </p>
       <section
         className={`op-card op-day-card${day.data ? " day-chosen" : ""}`}
         aria-labelledby="processing-day-title"
@@ -276,7 +301,6 @@ export function OperationsPage() {
               value={dayCode ?? ""}
               disabled={sending}
               onChange={(e) => {
-                setQueueOffset(0);
                 setTaskOffset(0);
                 setEventOffset(0);
                 setSubmitError("");
@@ -354,7 +378,7 @@ export function OperationsPage() {
               onSettings={(saved) =>
                 setSettings({
                   ...saved,
-                  stage_timeout_seconds: saved.stage_timeout_seconds ?? 900,
+                  stage_timeout_seconds: saved.stage_timeout_seconds ?? 300,
                 })
               }
               onRefresh={day.retry}
@@ -439,11 +463,18 @@ export function OperationsPage() {
           )}
         </p>
       </section>
-      {(submitError || monitor.error) && (
+      {(submitError || monitor.error || latestRun.error) && (
         <p className="op-failure-note" role="alert">
-          {submitError || monitor.error}
-          {monitor.error && (
-            <button onClick={monitor.retry}>تلاش دوباره</button>
+          {submitError || monitor.error || latestRun.error?.message}
+          {(monitor.error || latestRun.error) && (
+            <button
+              onClick={() => {
+                monitor.retry();
+                latestRun.retry();
+              }}
+            >
+              تلاش دوباره
+            </button>
           )}
         </p>
       )}
@@ -501,14 +532,6 @@ export function OperationsPage() {
               );
             })}
           </ol>
-          <div className="op-stage-note">
-            <ShieldCheck size={15} />
-            <p>
-              تغییر دامنه یا تنظیمات، اجرای ثبت‌شده را تغییر نمی‌دهد. عملیات
-              جدید در انتهای صف قرار می‌گیرد؛ مراحلِ فاقد پیش‌نیاز با خطای روشن
-              متوقف می‌شوند.
-            </p>
-          </div>
         </section>
         <aside className="op-run-sidebar">
           <section
@@ -619,10 +642,37 @@ export function OperationsPage() {
                 <div className="op-summary-scope">
                   <span>اجرای در حال مشاهده</span>
                   <strong>
-                    {dateLabel(run.day)} · {number(run.chunk_start)} تا{" "}
-                    {number(run.chunk_end)}
+                    {dateLabel(run.day)} ·{" "}
+                    {run.selection.mode === "chunks"
+                      ? `${number(run.chunk_count)} چانک انتخابی`
+                      : `${number(run.chunk_start)} تا ${number(run.chunk_end)}`}
                   </strong>
                 </div>
+                {!!run.failed_chunks?.length && (
+                  <div className="op-retry-control">
+                    <button
+                      className="days-button op-retry-failed"
+                      disabled={running || sending}
+                      onClick={() => void retryFailed()}
+                    >
+                      <CirclePlay size={15} />
+                      {sending
+                        ? "در حال ثبت…"
+                        : `اجرای مجدد ${number(run.failed_chunks.length)} چانک ناموفق`}
+                    </button>
+                    {running && (
+                      <small>
+                        پس از پایان این اجرا، چانک‌های ناموفق قابل اجرای مجدد
+                        هستند.
+                      </small>
+                    )}
+                  </div>
+                )}
+                {run.retry_of_run_id && (
+                  <p className="op-retry-caption">
+                    اجرای مجدد چانک‌های ناموفق · {number(run.chunk_count)} چانک
+                  </p>
+                )}
                 <div className="op-run-id">
                   <bdi>{run.id}</bdi>
                 </div>
@@ -739,52 +789,8 @@ export function OperationsPage() {
               </>
             )}
           </section>
-          <div className="op-local-note">
-            <Info size={15} />
-            <p>
-              خروج از صفحه پردازش را متوقف نمی‌کند. اجرای قبلی را از صف انتخاب
-              کنید یا پیوند دارای شناسهٔ اجرا را باز کنید.
-            </p>
-          </div>
         </aside>
       </div>
-      <section
-        className="op-card op-queue"
-        aria-labelledby="operation-queue-title"
-      >
-        <div className="op-section-heading">
-          <div>
-            <ListChecks size={18} />
-            <h2 id="operation-queue-title">صف و سابقهٔ عملیات</h2>
-          </div>
-          <span>به‌روزرسانی هر ۱۰ ثانیه</span>
-        </div>
-        {monitor.queue?.results.length ? (
-          monitor.queue.results.map((item) => (
-            <button
-              key={item.id}
-              className={`op-queue-row${runId === item.id ? " selected" : ""}`}
-              onClick={() => chooseRun(item.id)}
-            >
-              <bdi>{item.id}</bdi>
-              <span>
-                {dateLabel(item.day)} · چانک {number(item.chunk_start)} تا{" "}
-                {number(item.chunk_end)}
-              </span>
-              <span>
-                {item.cancel_requested && item.status === "running"
-                  ? "در انتظار توقف پس از چانک جاری"
-                  : statusLabels[item.status]}{" "}
-                · {number(item.progress.percent)}٪
-              </span>
-            </button>
-          ))
-        ) : (
-          <p className="op-day-empty">عملیاتی ثبت نشده است.</p>
-        )}
-        {monitor.queue &&
-          pagination(queueOffset, monitor.queue.count, 5, setQueueOffset)}
-      </section>
       {run && (
         <section className="op-card op-queue">
           <div className="op-section-heading">

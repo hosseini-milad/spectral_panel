@@ -37,6 +37,9 @@ let running = false;
 let cancelPosts = 0;
 let finishCancelled = false;
 let showTelemetry = false;
+let retryPosts = 0;
+const retryKeys = [];
+let abortRetry = true;
 const readTimes = [];
 const bodies = [];
 const makeRun = (id, body) => ({
@@ -100,6 +103,43 @@ const makeRun = (id, body) => ({
     page.on("pageerror", (e) => errors.push(e.message));
     await page.route("**/api/v1/**", async (route) => {
       const url = new URL(route.request().url());
+      if (
+        route.request().method() === "POST" &&
+        url.pathname.endsWith("/retry-failed/")
+      ) {
+        retryPosts++;
+        const key = route.request().headers()["idempotency-key"];
+        retryKeys.push(key);
+        assert(key);
+        assert.deepEqual(route.request().postDataJSON(), {
+          stage_timeout_seconds: 300,
+        });
+        const sourceId = url.pathname.match(/\/runs\/([^/]+)\//)[1];
+        const source = runs.find((r) => r.id === sourceId);
+        let retry = runs.find((r) => r._retryKey === key);
+        if (!retry) {
+          retry = {
+            ...makeRun("00000000-0000-4000-8000-000000000099", {
+              settings: { ...source.settings, stage_timeout_seconds: 300 },
+              selection: { mode: "chunks", chunk_indices: [0, 3] },
+            }),
+            chunk_start: 0,
+            chunk_end: 3,
+            chunk_count: 2,
+            retry_of_run_id: sourceId,
+            _retryKey: key,
+          };
+          runs.unshift(retry);
+        }
+        if (abortRetry) {
+          abortRetry = false;
+          return route.abort("failed");
+        }
+        return route.fulfill({
+          status: 202,
+          json: { created: false, run: retry },
+        });
+      }
       if (
         route.request().method() === "POST" &&
         url.pathname.endsWith("/cancel/")
@@ -189,7 +229,9 @@ const makeRun = (id, body) => ({
       if (matched) {
         const run = runs.find((r) => r.id === matched[1]);
         assert(run);
-        if (url.pathname.endsWith("/tasks/"))
+        if (url.pathname.endsWith("/tasks/")) {
+          if (Number(url.searchParams.get("offset")) > 0)
+            await new Promise((resolve) => setTimeout(resolve, 300));
           return route.fulfill({
             json: {
               count: 40,
@@ -197,8 +239,10 @@ const makeRun = (id, body) => ({
               previous: null,
               results: [
                 {
-                  position: 0,
-                  chunk_index: run.chunk_start,
+                  position: Number(url.searchParams.get("offset") || 0),
+                  chunk_index:
+                    run.chunk_start +
+                    Math.floor(Number(url.searchParams.get("offset") || 0) / 4),
                   stage: "normalize",
                   status: running ? "succeeded" : "pending",
                   started_at: null,
@@ -216,6 +260,7 @@ const makeRun = (id, body) => ({
               ],
             },
           });
+        }
         if (url.pathname.endsWith("/events/"))
           return route.fulfill({
             json: {
@@ -272,9 +317,9 @@ const makeRun = (id, body) => ({
                         chunk_index: run.chunk_start + 1,
                         stage: "representatives",
                         started_at: day.updated_at,
-                        elapsed_seconds: 620,
-                        timeout_seconds: 900,
-                        remaining_seconds: 280,
+                        elapsed_seconds: 200,
+                        timeout_seconds: 300,
+                        remaining_seconds: 100,
                         last_output_at: day.updated_at,
                         seconds_since_output: 300,
                         phase: "centralities",
@@ -429,11 +474,11 @@ const makeRun = (id, body) => ({
       .waitFor();
     await page
       .locator(".op-task-runtime")
-      .getByText("۱۰ دقیقه و ۲۰ ثانیه", { exact: true })
+      .getByText("۳ دقیقه و ۲۰ ثانیه", { exact: true })
       .waitFor();
     await page
       .locator(".op-task-runtime")
-      .getByText("۱۵ دقیقه و ۰ ثانیه", { exact: true })
+      .getByText("۵ دقیقه و ۰ ثانیه", { exact: true })
       .waitFor();
     await page
       .locator(".op-chunk-failures")
@@ -492,7 +537,7 @@ const makeRun = (id, body) => ({
     assert.equal(posts, 6, "cancelling must not create another operation");
     running = false;
     const queuedId = runs[1].id;
-    await page.locator(".op-queue-row").filter({ hasText: queuedId }).click();
+    await page.goto(base + "/#/operations?day=" + day.day + "&run=" + queuedId);
     await page
       .getByRole("button", { name: "لغو ادامهٔ پردازش", exact: true })
       .click();
@@ -502,9 +547,91 @@ const makeRun = (id, body) => ({
       runs.some((r) => !r.cancel_requested),
       "other queued operations must be unaffected",
     );
+    assert.equal(await page.locator("#operation-queue-title").count(), 0);
+    assert.equal(await page.locator(".op-progress-details").count(), 0);
+    assert.equal(
+      await page
+        .locator(
+          ".op-mock-notice,.op-local-note,.op-stage-note,.op-page-heading .page-description",
+        )
+        .count(),
+      0,
+    );
+    const source = runs.find((r) => r.id.endsWith("000000000005"));
+    Object.assign(source, {
+      status: "failed",
+      cancel_requested: false,
+      failed_chunks: [0, 3],
+      recent_errors: [
+        {
+          chunk_index: 0,
+          stage: "sample",
+          error: { code: "stage_timeout" },
+          finished_at: day.updated_at,
+        },
+      ],
+      error: { code: "chunks_failed" },
+    });
+    await page.goto(
+      base + "/#/operations?day=" + day.day + "&run=" + source.id,
+    );
+    const retryButton = page.getByRole("button", {
+      name: "اجرای مجدد ۲ چانک ناموفق",
+      exact: true,
+    });
+    await retryButton.waitFor();
+    const tasks = page
+      .locator("section.op-card")
+      .filter({ has: page.locator(".op-task-table") });
+    const nextTaskPage = tasks.getByRole("button", {
+      name: "بعدی",
+      exact: true,
+    });
+    await nextTaskPage.scrollIntoViewIfNeeded();
+    const scrollBefore = await page.evaluate(() => window.scrollY);
+    await nextTaskPage.click();
+    await page.waitForTimeout(80);
+    assert.equal(
+      await page.locator(".op-task-table tbody tr").count(),
+      1,
+      "Do not remove current data while a page loads",
+    );
+    await page.waitForFunction(
+      () =>
+        document.querySelector(".op-task-table tbody td")?.textContent === "۲",
+    );
+    assert(
+      Math.abs((await page.evaluate(() => window.scrollY)) - scrollBefore) < 5,
+      "Task pagination must preserve document scroll",
+    );
+    await retryButton.evaluate((button) => {
+      button.click();
+      button.click();
+    });
+    await page
+      .getByRole("alert")
+      .filter({ hasText: "دریافت پاسخ اجرای مجدد" })
+      .waitFor();
+    assert.equal(retryPosts, 1);
+    await retryButton.click();
+    await page.waitForFunction(() => location.hash.includes("000000000099"));
+    assert.equal(retryPosts, 2);
+    assert.equal(retryKeys[0], retryKeys[1]);
+    assert.equal(runs.filter((r) => r._retryKey).length, 1);
+    await page
+      .getByText("اجرای مجدد چانک‌های ناموفق · ۲ چانک", { exact: true })
+      .waitFor();
+    assert.deepEqual(runs[0].selection, {
+      mode: "chunks",
+      chunk_indices: [0, 3],
+    });
+    assert.deepEqual(source.failed_chunks, [0, 3]);
+    await page.goto(base + "/#/operations?day=" + day.day);
+    await page.waitForFunction(() => location.hash.includes("000000000099"));
+    assert.equal(retryPosts, 2, "Recover latest run without submitting again");
     assert.deepEqual(errors, []);
     console.log(
-      "PASS: server days; range 1–10 and 11–20; page/single/all; double-click and retry keys; 10-second truthful polling; queued next request while running; persisted reload; events/tasks; graceful cancellation, duplicate-click guard, persisted pending cancellation, truthful cancelled progress, queued cancellation and responsive layout.",
+      "PASS: server days; range 1–10 and 11–20; page/single/all; double-click and retry keys; 10-second truthful polling; queued next request while running; persisted reload; events/tasks; graceful cancellation, duplicate-click guard, persisted pending cancellation, truthful cancelled progress, queued cancellation; sparse failed-chunk retry with preserved key; latest-run recovery; removed sections; stable pagination scroll; five-minute default and responsive layout.",
     );
   } finally {
     await browser.close();

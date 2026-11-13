@@ -10,12 +10,12 @@ import {
 export function useOperations(
   day: string | null,
   runId: string | null,
-  queueOffset: number,
   taskOffset: number,
   eventOffset: number,
 ) {
+  const scope = `${day ?? ""}:${runId ?? ""}`;
   const [data, setData] = useState<{
-    queue?: Page<Run>;
+    scope?: string;
     run?: Run;
     tasks?: Page<Task>;
     events?: Page<RunEvent>;
@@ -26,19 +26,10 @@ export function useOperations(
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
     let active = true;
-    setData({});
     setError("");
     async function refresh() {
       try {
-        const [queue, run, tasks, events] = await Promise.all([
-          getJSON<Page<Run>>(
-            apiPath("operations/runs/", {
-              day: day ?? undefined,
-              limit: 5,
-              offset: queueOffset,
-            }),
-            controller.signal,
-          ),
+        const [run, tasks, events] = await Promise.all([
           runId ? getRun(runId, controller.signal) : Promise.resolve(undefined),
           runId
             ? getTasks(runId, taskOffset, controller.signal)
@@ -54,7 +45,7 @@ export function useOperations(
             : Promise.resolve(undefined),
         ]);
         if (active) {
-          setData({ queue, run, tasks, events });
+          setData({ scope, run, tasks, events });
           setError("");
         }
       } catch (e) {
@@ -69,6 +60,10 @@ export function useOperations(
       controller.abort();
       clearTimeout(timer);
     };
-  }, [day, runId, queueOffset, taskOffset, eventOffset, attempt]);
-  return { ...data, error, retry: () => setAttempt((v) => v + 1) };
+  }, [day, runId, taskOffset, eventOffset, attempt, scope]);
+  return {
+    ...(data.scope === scope ? data : {}),
+    error,
+    retry: () => setAttempt((v) => v + 1),
+  };
 }

@@ -10,7 +10,8 @@ export type Selection =
   | { mode: "single"; chunk_index: number }
   | { mode: "range"; start_chunk: number; end_chunk: number }
   | { mode: "page"; page: number; page_size: number }
-  | { mode: "all" };
+  | { mode: "all" }
+  | { mode: "chunks"; chunk_indices: number[] };
 export interface Settings {
   chunk_size: number;
   stage_timeout_seconds: number;
@@ -57,6 +58,7 @@ export interface Run {
   day: string;
   execution_policy?: string;
   current_task?: ActiveTask | null;
+  retry_of_run_id?: string | null;
   failed_chunks?: number[];
   recent_errors?: {
     chunk_index: number;
@@ -252,4 +254,34 @@ export async function cancelOperation(id: string): Promise<Run> {
         : "ثبت درخواست لغو انجام نشد؛ دوباره تلاش کنید.",
     );
   return response.json() as Promise<Run>;
+}
+
+export async function retryFailedOperation(
+  id: string,
+  timeout: number,
+  key: string,
+) {
+  let response: Response;
+  try {
+    response = await fetch(apiPath(`operations/runs/${id}/retry-failed/`), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "Idempotency-Key": key,
+      },
+      body: JSON.stringify({ stage_timeout_seconds: timeout }),
+    });
+  } catch {
+    throw new Error(
+      "دریافت پاسخ اجرای مجدد ممکن نشد؛ تلاش دوباره با همان کلید انجام می‌شود.",
+    );
+  }
+  if (!response.ok)
+    throw new Error(
+      response.status === 409
+        ? "اجرای مجدد ممکن نیست؛ اجرای قبلی باید تمام شده و ورودی روز و اندازهٔ چانک سازگار باشد."
+        : "ثبت اجرای مجدد انجام نشد؛ مهلت مرحله و اطلاعات روز را بررسی کنید.",
+    );
+  return response.json() as Promise<{ created: boolean; run: Run }>;
 }

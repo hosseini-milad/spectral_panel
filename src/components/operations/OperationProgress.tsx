@@ -3,7 +3,6 @@ import {
   Activity,
   ArrowLeft,
   ArrowUpLeft,
-  Check,
   CheckCheck,
   ChevronDown,
   ChevronLeft,
@@ -13,7 +12,6 @@ import {
   GitBranch,
   Info,
   Layers3,
-  ListChecks,
   RefreshCw,
   RotateCcw,
   ScanLine,
@@ -61,12 +59,6 @@ interface Job {
   worker: { online: boolean };
   queue_position: number | null;
 }
-const statusText: Record<string, string> = {
-  complete: "کامل",
-  partial: "نیمه‌کاره",
-  attention: "نیازمند بررسی",
-};
-
 export function OperationProgress({
   day,
   snapshot,
@@ -83,9 +75,6 @@ export function OperationProgress({
   onRefresh: () => void;
 }) {
   const [mapPage, setMapPage] = useState(0);
-  const [expanded, setExpanded] = useState(false);
-  const [offset, setOffset] = useState(0);
-  const [status, setStatus] = useState("complete");
   const [size, setSize] = useState(10);
   const [attempt, setAttempt] = useState(0);
   const [data, setData] = useState<{ url: string; value: Summary }>();
@@ -100,9 +89,7 @@ export function OperationProgress({
   refreshCallback.current = onRefresh;
   const url = apiPath(`days/${day}/operations/progress/`, {
     ...settings,
-    limit: 10,
-    offset,
-    status,
+    limit: 1,
     resume_size: size,
   });
   const summary = data?.url === url ? data.value : undefined;
@@ -637,111 +624,6 @@ export function OperationProgress({
               ))}
             </div>
           </div>
-          <details
-            className="op-progress-details"
-            open={expanded}
-            onToggle={(e) => setExpanded(e.currentTarget.open)}
-          >
-            <summary>
-              <span>
-                <ListChecks size={17} />
-                فهرست چانک‌های پردازش‌شده<b>{number(summary.count)}</b>
-              </span>
-              <span className="op-progress-details-hint">
-                مشاهدهٔ جزئیات
-                <ChevronDown size={16} />
-              </span>
-            </summary>
-            <div className="op-progress-details-body">
-              <div className="op-progress-filter">
-                <span>وضعیت هر چانک و مراحل تکمیل‌شده</span>
-                <label>
-                  نمایش
-                  <select
-                    aria-label="فیلتر آمار چانک‌ها"
-                    value={status}
-                    onChange={(e) => {
-                      setStatus(e.target.value);
-                      setOffset(0);
-                    }}
-                  >
-                    <option value="complete">کامل</option>
-                    <option value="partial">نیمه‌کاره</option>
-                    <option value="attention">نیازمند بررسی</option>
-                    <option value="all">همهٔ موارد مشاهده‌شده</option>
-                  </select>
-                </label>
-              </div>
-              {summary.results.length ? (
-                <div className="op-progress-table">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>چانک</th>
-                        <th>وضعیت</th>
-                        {stages.map((s) => (
-                          <th key={s}>{labels[s]}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {summary.results.map((r) => (
-                        <tr key={r.chunk_index}>
-                          <td>{number(r.chunk_index)}</td>
-                          <td>
-                            <span className={`op-chunk-status is-${r.status}`}>
-                              <i />
-                              {statusText[r.status]}
-                            </span>
-                            {r.reserved && (
-                              <span className="op-chunk-reserved">
-                                در صف / اجرا
-                              </span>
-                            )}
-                          </td>
-                          {stages.map((s) => (
-                            <td key={s}>
-                              {r.stages[s] ? (
-                                <span className="op-stage-done">
-                                  <Check size={13} />
-                                  تکمیل
-                                </span>
-                              ) : (
-                                <span className="op-stage-missing">—</span>
-                              )}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <p className="op-progress-empty">
-                  چانکی با این وضعیت ثبت نشده است.
-                </p>
-              )}
-              <div className="op-pagination">
-                <button
-                  className="days-button"
-                  disabled={!offset}
-                  onClick={() => setOffset(Math.max(0, offset - 10))}
-                >
-                  قبلی
-                </button>
-                <span>
-                  {number(summary.count)} چانک · صفحهٔ {number(offset / 10 + 1)}
-                </span>
-                <button
-                  className="days-button"
-                  disabled={offset + 10 >= summary.count}
-                  onClick={() => setOffset(offset + 10)}
-                >
-                  بعدی
-                </button>
-              </div>
-            </div>
-          </details>
           <footer className="op-progress-footer">
             <span>
               <Info size={13} />

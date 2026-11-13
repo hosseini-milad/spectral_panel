@@ -17,25 +17,6 @@
   font-size: 10px;
   white-space: nowrap;
 }
-.op-mock-notice {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  color: var(--text-muted);
-  font-size: 10px;
-  margin-bottom: 22px;
-}
-.op-mock-notice > svg {
-  margin-top: 1px;
-}
-.op-sequential-hint {
-  margin-inline-start: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-  font-size: 9px;
-}
 .op-card {
   background: var(--surface);
   border: 1px solid var(--line);
@@ -511,18 +492,6 @@
 .op-step-error > svg {
   margin-top: 2px;
 }
-.op-stage-note {
-  display: flex;
-  gap: 7px;
-  align-items: flex-start;
-  margin: 16px 3px 0;
-  color: var(--text-muted);
-  font-size: 9px;
-  line-height: 2;
-}
-.op-stage-note > svg {
-  margin-top: 3px;
-}
 .op-run-sidebar {
   position: sticky;
   top: 20px;
@@ -752,18 +721,6 @@
   color: var(--text-muted);
   margin: -3px 0 15px;
   line-height: 2;
-}
-.op-local-note {
-  display: flex;
-  gap: 7px;
-  align-items: flex-start;
-  padding: 15px 7px;
-  font-size: 9px;
-  color: var(--text-muted);
-  line-height: 2;
-}
-.op-local-note > svg {
-  margin-top: 2px;
 }
 .op-completion-banner {
   display: flex;
@@ -1008,9 +965,6 @@
     flex-basis: 100%;
     margin-inline-start: 0;
   }
-  .op-local-note {
-    font-size: 8px;
-  }
 }
 @media (max-width: 760px) {
   .operations-page {
@@ -1028,12 +982,6 @@
     font-size: 9px;
     padding: 5px 8px;
     margin-top: 5px;
-  }
-  .op-mock-notice {
-    font-size: 9px;
-  }
-  .op-sequential-hint {
-    display: none;
   }
   .op-workspace {
     display: flex;
@@ -1108,9 +1056,6 @@
   .op-run-help {
     font-size: 9px;
   }
-  .op-local-note {
-    font-size: 8px;
-  }
   .op-step-heading {
     gap: 10px;
   }
@@ -1151,9 +1096,6 @@
   }
   .op-result-grid strong {
     font-size: 17px;
-  }
-  .op-stage-note {
-    font-size: 8px;
   }
   .op-completion-banner {
     flex-wrap: wrap;
@@ -1297,28 +1239,6 @@
   padding: 20px;
   overflow: hidden;
 }
-.op-queue-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  width: 100%;
-  text-align: start;
-  border: 0;
-  border-bottom: 1px solid var(--line);
-  padding: 16px;
-  background: transparent;
-  color: var(--text);
-  font: inherit;
-  font-size: 11px;
-  cursor: pointer;
-}
-.op-queue-row.selected {
-  background: var(--accent-soft);
-  outline: 1px solid var(--accent-border);
-}
-.op-queue-row bdi,
 .op-run-id bdi,
 .op-step-details bdi {
   overflow-wrap: anywhere;
@@ -1351,14 +1271,6 @@
   }
   .op-queue {
     padding: 12px;
-  }
-  .op-queue-row {
-    padding: 12px;
-    align-items: flex-start;
-    flex-direction: column;
-  }
-  .op-queue-row bdi {
-    font-size: 10px;
   }
 }
 
@@ -1408,11 +1320,7 @@
 .op-chunk-map-footer,
 .op-resume-card-title,
 .op-stage-coverage-heading,
-.op-progress-footer,
-.op-progress-details summary,
-.op-progress-details summary > span,
-.op-progress-filter,
-.op-progress-filter label {
+.op-progress-footer {
   display: flex;
   align-items: center;
 }
@@ -1628,6 +1536,8 @@
   height: 6px;
 }
 .op-chunk-map {
+  min-height: 169px;
+  align-content: start;
   display: grid;
   grid-template-columns: repeat(10, minmax(0, 1fr));
   gap: 6px;
@@ -1967,135 +1877,6 @@
   font-weight: 400;
   font-size: 8px;
 }
-.op-progress-details {
-  margin-top: 18px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  overflow: hidden;
-}
-.op-progress-details summary {
-  list-style: none;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 16px 17px;
-  cursor: pointer;
-  color: var(--text);
-  font-size: 11px;
-}
-.op-progress-details summary::-webkit-details-marker {
-  display: none;
-}
-.op-progress-details summary > span {
-  gap: 8px;
-}
-.op-progress-details summary > span > svg {
-  color: var(--accent);
-}
-.op-progress-details summary b {
-  font-size: 9px;
-  font-weight: 500;
-  border: 1px solid var(--line);
-  border-radius: 5px;
-  padding: 1px 6px;
-  color: var(--text-muted);
-}
-.op-progress-details .op-progress-details-hint {
-  color: var(--text-muted);
-  font-size: 9px;
-}
-.op-progress-details[open] summary {
-  border-bottom: 1px solid var(--line);
-}
-.op-progress-details[open] .op-progress-details-hint svg {
-  transform: rotate(180deg);
-}
-.op-progress-details-body {
-  padding: 0 16px;
-}
-.op-progress-filter {
-  justify-content: space-between;
-  gap: 10px;
-  padding: 14px 0;
-  font-size: 10px;
-}
-.op-progress-filter > span {
-  color: var(--text-muted);
-  font-size: 9px;
-}
-.op-progress-filter label {
-  gap: 8px;
-}
-.op-progress-table {
-  overflow-x: auto;
-}
-.op-progress table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 10px;
-  min-width: 520px;
-}
-.op-progress th,
-.op-progress td {
-  padding: 13px 10px;
-  text-align: start;
-  border-bottom: 1px solid var(--line);
-  white-space: nowrap;
-}
-.op-progress th {
-  color: var(--text-muted);
-  background: var(--surface-soft);
-  font-size: 9px;
-  font-weight: 500;
-}
-.op-progress tbody tr:last-child td {
-  border-bottom: 0;
-}
-.op-progress td:first-child {
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-}
-.op-chunk-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 7px;
-  border-radius: 5px;
-  font-size: 9px;
-}
-.op-chunk-status i {
-  width: 4px;
-  height: 4px;
-  background: currentColor;
-  border-radius: 50%;
-}
-.op-chunk-status.is-complete {
-  color: var(--accent);
-  background: var(--accent-soft);
-}
-.op-chunk-status.is-partial {
-  color: var(--chart-lilac);
-  background: var(--lilac-soft);
-}
-.op-chunk-status.is-attention {
-  color: var(--warning-text);
-  background: var(--warning-bg);
-}
-.op-chunk-reserved {
-  display: inline-block;
-  color: var(--chart-blue);
-  font-size: 8px;
-  margin-inline-start: 6px;
-}
-.op-stage-done {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--accent);
-  font-size: 9px;
-}
-.op-stage-missing {
-  color: var(--text-muted);
-}
 .op-progress-footer {
   justify-content: space-between;
   flex-wrap: wrap;
@@ -2303,20 +2084,6 @@
   .op-stage-coverage-item > div {
     font-size: 10px;
   }
-  .op-progress-details summary {
-    padding: 14px 12px;
-    font-size: 10px;
-  }
-  .op-progress-details .op-progress-details-hint {
-    font-size: 0;
-  }
-  .op-progress-filter {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-  .op-progress-details-body {
-    padding: 0 10px;
-  }
   .op-progress-footer > span {
     align-items: flex-start;
   }
@@ -2473,4 +2240,34 @@
 }
 .op-chunk-failures small {
   font-size: 9px;
+}
+
+.op-retry-control {
+  display: grid;
+  gap: 8px;
+  margin-block: 12px;
+}
+.op-retry-control .op-retry-failed {
+  display: flex;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 39px;
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+.op-retry-control small,
+.op-retry-caption {
+  color: var(--text-muted);
+  font-size: 9px;
+  line-height: 1.9;
+}
+
+.op-chunk-map:empty {
+  min-height: 0;
+}
+@media (max-width: 600px) {
+  .op-chunk-map {
+    min-height: 146px;
+  }
 }

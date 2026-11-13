@@ -213,19 +213,8 @@ const inventory = {
       "39",
     );
     assert.equal(operationPosts, 0);
-    await panel.locator("summary").click();
-    await panel.getByRole("button", { name: "بعدی", exact: true }).click();
-    await page.waitForFunction(
-      () =>
-        document.querySelector(".op-progress tbody tr td")?.textContent ===
-        "۱۰",
-    );
-    await panel.getByLabel("فیلتر آمار چانک‌ها").selectOption("partial");
-    await page.waitForFunction(
-      () =>
-        document.querySelector(".op-progress tbody tr td")?.textContent ===
-        "۳۰",
-    );
+    assert.equal(await panel.locator(".op-progress-details").count(), 0);
+    assert.equal(await page.locator("#operation-queue-title").count(), 0);
     await panel
       .getByRole("button", {
         name: "استفاده از تنظیمات آخرین اجرا",
@@ -287,7 +276,15 @@ const inventory = {
     });
     await mapNext.click();
     await mapNext.click();
+    await mapNext.scrollIntoViewIfNeeded();
+    const beforeMapScroll = await page.evaluate(() => window.scrollY);
     await mapNext.click();
+    await page.waitForTimeout(200);
+    assert(
+      Math.abs((await page.evaluate(() => window.scrollY)) - beforeMapScroll) <
+        5,
+      "Last map page must not jump the viewport",
+    );
     assert.equal(await panel.locator(".op-chunk-cell").count(), 2);
     assert.equal(
       await panel
@@ -316,7 +313,7 @@ const inventory = {
     assert.equal(operationPosts, 0);
     assert.deepEqual(errors, []);
     console.log(
-      "PASS: 39 complete with hole at 30; resume prefills range without POST; pagination/filter; previous settings; 10-second polling; explicit refresh; all complete; 152-chunk map pagination; empty day; responsive layout.",
+      "PASS: 39 complete with hole at 30; resume prefills range without POST; redundant table/history removed; previous settings; 10-second polling; explicit refresh; all complete; 152-chunk map pagination without scroll jumps; empty day; responsive layout.",
     );
   } finally {
     await browser.close();
