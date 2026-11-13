@@ -1,4 +1,24 @@
 import { useEffect, useRef, useState } from "react";
+import {
+  Activity,
+  ArrowLeft,
+  ArrowUpLeft,
+  Check,
+  CheckCheck,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  CircleCheck,
+  Clock3,
+  GitBranch,
+  Info,
+  Layers3,
+  ListChecks,
+  RefreshCw,
+  RotateCcw,
+  ScanLine,
+  ShieldAlert,
+} from "lucide-react";
 import { apiPath, getJSON } from "../../api/days";
 import {
   labels,
@@ -62,6 +82,7 @@ export function OperationProgress({
   onSettings: (settings: Settings) => void;
   onRefresh: () => void;
 }) {
+  const [mapPage, setMapPage] = useState(0);
   const [expanded, setExpanded] = useState(false);
   const [offset, setOffset] = useState(0);
   const [status, setStatus] = useState("complete");
@@ -184,242 +205,567 @@ export function OperationProgress({
       setSending(false);
     }
   }
+  const completion = summary?.total_chunks
+    ? Math.min(
+        100,
+        Math.max(0, (summary.complete_chunks / summary.total_chunks) * 100),
+      )
+    : 0;
+  const mapPages = Math.max(1, Math.ceil((summary?.total_chunks ?? 0) / 50));
+  const visibleMapPage = Math.min(mapPage, mapPages - 1);
+  const mapStart = visibleMapPage * 50;
+  const suggestion = summary?.suggested_selection;
+  const metrics = summary
+    ? [
+        {
+          label: "چانک کامل",
+          value: summary.complete_chunks,
+          note: `از ${number(summary.total_chunks)} چانک روز`,
+          icon: CircleCheck,
+          tone: "green",
+        },
+        {
+          label: "باقی‌مانده",
+          value: summary.remaining_chunks,
+          note: "تا تکمیل پردازش روز",
+          icon: Layers3,
+          tone: "neutral",
+        },
+        {
+          label: "در صف / اجرا",
+          value: summary.reserved_remaining_chunks,
+          note: "از چانک‌های باقی‌مانده",
+          icon: Clock3,
+          tone: "blue",
+        },
+        {
+          label: "نیمه‌کاره",
+          value: summary.partial_chunks,
+          note: "دارای خروجی برخی مراحل",
+          icon: ScanLine,
+          tone: "lilac",
+        },
+        {
+          label: "نیازمند بررسی",
+          value: summary.attention_chunks,
+          note: "خروجی ناقص یا ناسازگار",
+          icon: ShieldAlert,
+          tone: "amber",
+        },
+      ]
+    : [];
   return (
     <section className="op-progress" aria-label="آمار پردازش چانک‌ها">
-      <div className="op-progress-heading">
-        <strong>وضعیت پردازش چانک‌های روز</strong>
-        <button
-          className="days-button"
-          disabled={busy}
-          onClick={() => void refresh()}
-        >
-          {busy ? "در حال بازخوانی…" : "بازخوانی آمار از خروجی‌ها"}
-        </button>
-      </div>
-      {refreshError && <p role="alert">{refreshError}</p>}
-      {busy && job && (
-        <p role="status">
-          {job.worker.online
-            ? "در انتظار تکمیل بازخوانی"
-            : "برای بازخوانی، run_api_worker را اجرا کنید."}
-          {job.queue_position !== null
-            ? ` · جایگاه صف: ${number(job.queue_position)}`
-            : ""}
-        </p>
+      <header className="op-progress-header">
+        <div className="op-progress-title">
+          <span className="op-progress-title-icon">
+            <Activity size={19} />
+          </span>
+          <div>
+            <h3>وضعیت پردازش چانک‌های روز</h3>
+            <p>پوشش پردازش و مسیر ادامه، در یک نگاه</p>
+          </div>
+        </div>
+        <div className="op-progress-header-actions">
+          <span className="op-progress-poll">
+            <i aria-hidden="true" />
+            پایش هر ۱۰ ثانیه
+          </span>
+          <button
+            className="days-button op-progress-refresh"
+            disabled={busy}
+            onClick={() => void refresh()}
+          >
+            <RefreshCw
+              size={14}
+              className={busy ? "op-progress-spin" : undefined}
+            />
+            {busy ? "در حال بازخوانی…" : "بازخوانی آمار از خروجی‌ها"}
+          </button>
+        </div>
+      </header>
+      {refreshError && (
+        <div className="op-progress-message is-warning" role="alert">
+          <ShieldAlert size={16} />
+          {refreshError}
+        </div>
       )}
-      {notice && <p role="status">{notice}</p>}
+      {busy && job && (
+        <div className="op-progress-message" role="status">
+          <Clock3 size={16} />
+          <span>
+            {job.worker.online
+              ? "در انتظار تکمیل بازخوانی"
+              : "برای بازخوانی، run_api_worker را اجرا کنید."}
+            {job.queue_position !== null
+              ? ` · جایگاه صف: ${number(job.queue_position)}`
+              : ""}
+          </span>
+        </div>
+      )}
+      {notice && (
+        <div className="op-progress-message is-success" role="status">
+          <CheckCheck size={16} />
+          {notice}
+        </div>
+      )}
       {error && (
-        <p role="alert">
-          {error}{" "}
+        <div className="op-progress-message is-warning" role="alert">
+          <ShieldAlert size={16} />
+          <span>{error}</span>
           <button
             className="days-button"
             onClick={() => setAttempt((n) => n + 1)}
           >
             تلاش دوباره
           </button>
-        </p>
+        </div>
       )}
-      {!summary && !error && <p>در حال دریافت آمار…</p>}
-      {summary && (
-        <>
-          <div className="op-progress-counts">
-            <span>
-              کامل{" "}
-              <strong>
-                {number(summary.complete_chunks)} از{" "}
-                {number(summary.total_chunks)}
-              </strong>
-            </span>
-            <span>
-              باقی‌مانده <strong>{number(summary.remaining_chunks)}</strong>
-            </span>
-            <span>
-              نیمه‌کاره <strong>{number(summary.partial_chunks)}</strong>
-            </span>
-            <span>
-              نیازمند بررسی <strong>{number(summary.attention_chunks)}</strong>
-            </span>
-            <span>
-              باقی‌مانده در صف / اجرا{" "}
-              <strong>{number(summary.reserved_remaining_chunks)}</strong>
-            </span>
-          </div>
-          <p>
-            بازه‌های کامل:{" "}
-            {summary.completed_ranges.length
-              ? summary.completed_ranges
-                  .map((r) =>
-                    r.start_chunk === r.end_chunk
-                      ? number(r.start_chunk)
-                      : `${number(r.start_chunk)} تا ${number(r.end_chunk)}`,
-                  )
-                  .join("، ")
-              : "هنوز چانک کاملی ثبت نشده است."}
-            {summary.completed_ranges_truncated &&
-              " … ادامه در فهرست صفحه‌بندی‌شده"}
-          </p>
-          <p>
-            بالاترین شمارهٔ کامل:{" "}
-            {summary.highest_completed_chunk === null
-              ? "—"
-              : number(summary.highest_completed_chunk)}{" "}
-            · اولین چانک باقی‌مانده:{" "}
-            {summary.first_remaining_chunk === null
-              ? "همه کامل‌اند"
-              : number(summary.first_remaining_chunk)}
-          </p>
-          <div className="op-progress-counts">
-            {stages.map((stage) => (
-              <span key={stage}>
-                {labels[stage]}{" "}
-                <strong>
-                  {number(summary.stage_counts[stage])} از{" "}
-                  {number(summary.total_chunks)}
-                </strong>
-              </span>
+      {!summary && !error && (
+        <div className="op-progress-skeleton" role="status">
+          <span>در حال دریافت آمار…</span>
+          <div>
+            {[0, 1, 2, 3, 4].map((n) => (
+              <i key={n} />
             ))}
           </div>
-          <div className="op-progress-heading">
-            <label>
-              اندازهٔ نوبت ادامه{" "}
-              <select
-                aria-label="اندازهٔ نوبت ادامه"
-                value={size}
-                onChange={(e) => {
-                  setSize(Number(e.target.value));
-                  setNotice("");
+        </div>
+      )}
+      {summary && (
+        <>
+          <div className="op-progress-metrics">
+            {metrics.map(({ label, value, note, icon: Icon, tone }) => (
+              <div key={label} className={`op-progress-metric tone-${tone}`}>
+                <div className="op-progress-metric-label">
+                  <span>{label}</span>
+                  <Icon size={17} />
+                </div>
+                <strong>{number(value)}</strong>
+                <span className="op-progress-metric-note">{note}</span>
+              </div>
+            ))}
+          </div>
+          <div className="op-progress-workspace">
+            <div className="op-coverage-card">
+              <div className="op-coverage-heading">
+                <div>
+                  <h4>
+                    <Layers3 size={16} />
+                    پوشش چانک‌ها
+                  </h4>
+                  <p>شمارهٔ هر خانه، شناسهٔ واقعی چانک است.</p>
+                </div>
+                <div className="op-coverage-percent">
+                  <strong>
+                    {summary.total_chunks
+                      ? number(Math.round(completion))
+                      : "—"}
+                    <small>٪</small>
+                  </strong>
+                  <span>
+                    {number(summary.complete_chunks)} از{" "}
+                    {number(summary.total_chunks)}
+                  </span>
+                </div>
+              </div>
+              <progress
+                className="op-coverage-bar"
+                value={summary.complete_chunks}
+                max={summary.total_chunks || 1}
+                aria-label="پوشش تکمیل چانک‌ها"
+              />
+              <div
+                className="op-chunk-map"
+                role="list"
+                aria-label="نقشهٔ تکمیل چانک‌ها"
+              >
+                {Array.from(
+                  {
+                    length: Math.min(
+                      50,
+                      Math.max(0, summary.total_chunks - mapStart),
+                    ),
+                  },
+                  (_, n) => {
+                    const index = mapStart + n;
+                    const done = summary.completed_ranges.some(
+                      (r) => index >= r.start_chunk && index <= r.end_chunk,
+                    );
+                    const proposed =
+                      suggestion &&
+                      index >= suggestion.start_chunk &&
+                      index <= suggestion.end_chunk;
+                    const unknown = !done && summary.completed_ranges_truncated;
+                    const text = done
+                      ? "کامل"
+                      : unknown
+                        ? "اطلاعات تکمیل نامشخص"
+                        : "باقی‌مانده";
+                    return (
+                      <span
+                        role="listitem"
+                        key={index}
+                        className={`op-chunk-cell${done ? " is-complete" : ""}${proposed ? " is-proposed" : ""}${unknown ? " is-unknown" : ""}`}
+                        title={`چانک ${number(index)} · ${text}${proposed ? " · بازهٔ پیشنهادی" : ""}`}
+                        aria-label={`چانک ${number(index)}: ${text}${proposed ? "، بازهٔ پیشنهادی" : ""}`}
+                      >
+                        {number(index)}
+                      </span>
+                    );
+                  },
+                )}
+              </div>
+              {!summary.total_chunks && (
+                <p className="op-progress-empty">
+                  چانکی برای این روز ثبت نشده است.
+                </p>
+              )}
+              <div className="op-chunk-map-footer">
+                <div className="op-chunk-legend">
+                  <span>
+                    <i className="is-complete" />
+                    کامل
+                  </span>
+                  <span>
+                    <i />
+                    باقی‌مانده
+                  </span>
+                  <span>
+                    <i className="is-proposed" />
+                    پیشنهاد ادامه
+                  </span>
+                  {summary.completed_ranges_truncated && (
+                    <span>
+                      <i className="is-unknown" />
+                      نامشخص
+                    </span>
+                  )}
+                </div>
+                {mapPages > 1 && (
+                  <div className="op-map-pagination">
+                    <button
+                      aria-label="چانک‌های قبلی در نقشه"
+                      disabled={visibleMapPage === 0}
+                      onClick={() => setMapPage(visibleMapPage - 1)}
+                    >
+                      <ChevronRight size={15} />
+                    </button>
+                    <span>
+                      {number(mapStart)} تا{" "}
+                      {number(
+                        Math.min(summary.total_chunks - 1, mapStart + 49),
+                      )}
+                    </span>
+                    <button
+                      aria-label="چانک‌های بعدی در نقشه"
+                      disabled={visibleMapPage + 1 >= mapPages}
+                      onClick={() => setMapPage(visibleMapPage + 1)}
+                    >
+                      <ChevronLeft size={15} />
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div className="op-coverage-facts">
+                <span>
+                  آخرین شمارهٔ کامل{" "}
+                  <b>
+                    {summary.highest_completed_chunk === null
+                      ? "—"
+                      : number(summary.highest_completed_chunk)}
+                  </b>
+                </span>
+                <span>
+                  اولین چانک باقی‌مانده{" "}
+                  <b>
+                    {summary.first_remaining_chunk === null
+                      ? "همه کامل‌اند"
+                      : number(summary.first_remaining_chunk)}
+                  </b>
+                </span>
+              </div>
+              <div className="op-completed-ranges">
+                <span>بازه‌های کامل</span>
+                <div>
+                  {summary.completed_ranges.length ? (
+                    summary.completed_ranges.map((r) => (
+                      <b key={r.start_chunk}>
+                        {r.start_chunk === r.end_chunk
+                          ? number(r.start_chunk)
+                          : `${number(r.start_chunk)} تا ${number(r.end_chunk)}`}
+                      </b>
+                    ))
+                  ) : (
+                    <small>هنوز چانک کاملی ثبت نشده است.</small>
+                  )}
+                  {summary.completed_ranges_truncated && (
+                    <small>ادامه در فهرست چانک‌ها</small>
+                  )}
+                </div>
+              </div>
+            </div>
+            <aside
+              className="op-resume-card"
+              aria-label="پیشنهاد ادامهٔ پردازش"
+            >
+              <div className="op-resume-card-title">
+                <span className="op-resume-icon">
+                  <ArrowUpLeft size={20} />
+                </span>
+                <div>
+                  <h4>نوبت بعدی پردازش</h4>
+                  <p>ادامه از اولین چانکِ خارج از صف</p>
+                </div>
+              </div>
+              {suggestion ? (
+                <div className="op-resume-range">
+                  <span>بازهٔ پیشنهادی</span>
+                  <div>
+                    <strong>{number(suggestion.start_chunk)}</strong>
+                    <ArrowLeft size={20} />
+                    <strong>{number(suggestion.end_chunk)}</strong>
+                    <small>{number(suggestion.count)} چانک</small>
+                  </div>
+                </div>
+              ) : (
+                <div className="op-resume-empty">
+                  <CircleCheck size={26} />
+                  <strong>
+                    {summary.total_chunks === 0
+                      ? "چانکی برای پردازش وجود ندارد"
+                      : summary.remaining_chunks === 0
+                        ? "پردازش روز کامل است"
+                        : "باقی‌مانده‌ها در صف هستند"}
+                  </strong>
+                  <p>
+                    {summary.total_chunks === 0
+                      ? "ابتدا داده‌های ورودی این روز را بررسی کنید."
+                      : summary.remaining_chunks === 0
+                        ? "همهٔ چانک‌ها کامل‌اند."
+                        : "تمام چانک‌های باقی‌مانده در صف یا در حال اجرا هستند."}
+                  </p>
+                </div>
+              )}
+              <label className="op-resume-size">
+                اندازهٔ نوبت ادامه
+                <div>
+                  <select
+                    aria-label="اندازهٔ نوبت ادامه"
+                    value={size}
+                    onChange={(e) => {
+                      setSize(Number(e.target.value));
+                      setNotice("");
+                    }}
+                  >
+                    {[5, 10, 20, 50].map((n) => (
+                      <option key={n} value={n}>
+                        {number(n)} چانک
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown size={14} aria-hidden="true" />
+                </div>
+              </label>
+              <button
+                className="op-resume"
+                disabled={!suggestion || !!error}
+                onClick={() => {
+                  if (suggestion) {
+                    onContinue(suggestion);
+                    setNotice(
+                      "بازهٔ ادامه در فرم انتخاب شد؛ برای اجرا، آن را در صف ثبت کنید.",
+                    );
+                  }
                 }}
               >
-                {[5, 10, 20, 50].map((n) => (
-                  <option key={n} value={n}>
-                    {number(n)} چانک
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button
-              className="days-button op-resume"
-              disabled={!summary.suggested_selection || !!error}
-              onClick={() => {
-                if (summary.suggested_selection) {
-                  onContinue(summary.suggested_selection);
-                  setNotice(
-                    "بازهٔ ادامه در فرم انتخاب شد؛ برای اجرا، آن را در صف ثبت کنید.",
-                  );
-                }
-              }}
-            >
-              ادامهٔ پردازش
-              {summary.suggested_selection
-                ? ` از ${number(summary.suggested_selection.start_chunk)} تا ${number(summary.suggested_selection.end_chunk)}`
-                : ""}
-            </button>
-            {summary.latest_settings_compatible &&
-              summary.latest_run_settings && (
-                <button
-                  className="days-button"
-                  onClick={() => onSettings(summary.latest_run_settings!)}
-                >
-                  استفاده از تنظیمات آخرین اجرا
-                </button>
+                <span>
+                  ادامهٔ پردازش
+                  {suggestion
+                    ? ` از ${number(suggestion.start_chunk)} تا ${number(suggestion.end_chunk)}`
+                    : ""}
+                </span>
+                <ArrowLeft size={16} />
+              </button>
+              <p className="op-resume-hint">
+                با انتخاب ادامه، بازه در فرم قرار می‌گیرد؛ اجرای آن پس از ثبت در
+                صف شروع می‌شود.
+              </p>
+              {suggestion && (
+                <div className="op-resume-reuse">
+                  <CheckCheck size={14} />
+                  <span>
+                    {number(suggestion.reused_count)} چانک کامل در این بازه قابل
+                    استفادهٔ مجدد است.
+                  </span>
+                </div>
               )}
+              {summary.latest_settings_compatible &&
+                summary.latest_run_settings && (
+                  <button
+                    className="op-previous-settings"
+                    onClick={() => onSettings(summary.latest_run_settings!)}
+                  >
+                    <RotateCcw size={13} />
+                    استفاده از تنظیمات آخرین اجرا
+                  </button>
+                )}
+            </aside>
           </div>
-          {summary.suggested_selection ? (
-            <p>
-              چانک‌های در صف از پیشنهاد کنار گذاشته می‌شوند.{" "}
-              {number(summary.suggested_selection.reused_count)} چانک کامل در
-              این بازه دوباره بررسی و استفاده می‌شود؛ خروجی ناسازگار نیازمند
-              بررسی است.
-            </p>
-          ) : (
-            <p>
-              {summary.remaining_chunks === 0
-                ? "همهٔ چانک‌ها کامل‌اند."
-                : "تمام چانک‌های باقی‌مانده در صف یا در حال اجرا هستند."}
-            </p>
-          )}
+          <div className="op-stage-coverage" aria-label="پوشش مراحل پردازش">
+            <div className="op-stage-coverage-heading">
+              <GitBranch size={15} />
+              <h4>تکمیل مراحل</h4>
+              <span>تعداد چانک در هر مرحله</span>
+            </div>
+            <div className="op-stage-coverage-grid">
+              {stages.map((stage, index) => (
+                <div className="op-stage-coverage-item" key={stage}>
+                  <div>
+                    <span className="op-stage-index">{number(index + 1)}</span>
+                    <span>{labels[stage]}</span>
+                    <b>
+                      {number(summary.stage_counts[stage])}
+                      <small> از {number(summary.total_chunks)}</small>
+                    </b>
+                  </div>
+                  <progress
+                    value={summary.stage_counts[stage]}
+                    max={summary.total_chunks || 1}
+                    aria-label={`پوشش ${labels[stage]}`}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
           <details
+            className="op-progress-details"
             open={expanded}
             onToggle={(e) => setExpanded(e.currentTarget.open)}
           >
-            <summary>فهرست چانک‌های پردازش‌شده</summary>
-            <label>
-              نمایش{" "}
-              <select
-                aria-label="فیلتر آمار چانک‌ها"
-                value={status}
-                onChange={(e) => {
-                  setStatus(e.target.value);
-                  setOffset(0);
-                }}
-              >
-                <option value="complete">کامل</option>
-                <option value="partial">نیمه‌کاره</option>
-                <option value="attention">نیازمند بررسی</option>
-                <option value="all">همهٔ موارد مشاهده‌شده</option>
-              </select>
-            </label>
-            {summary.results.length ? (
-              <div className="op-progress-table">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>چانک</th>
-                      <th>وضعیت</th>
-                      {stages.map((s) => (
-                        <th key={s}>{labels[s]}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {summary.results.map((r) => (
-                      <tr key={r.chunk_index}>
-                        <td>{number(r.chunk_index)}</td>
-                        <td>
-                          {statusText[r.status]}
-                          {r.reserved ? " · در صف / اجرا" : ""}
-                        </td>
+            <summary>
+              <span>
+                <ListChecks size={17} />
+                فهرست چانک‌های پردازش‌شده<b>{number(summary.count)}</b>
+              </span>
+              <span className="op-progress-details-hint">
+                مشاهدهٔ جزئیات
+                <ChevronDown size={16} />
+              </span>
+            </summary>
+            <div className="op-progress-details-body">
+              <div className="op-progress-filter">
+                <span>وضعیت هر چانک و مراحل تکمیل‌شده</span>
+                <label>
+                  نمایش
+                  <select
+                    aria-label="فیلتر آمار چانک‌ها"
+                    value={status}
+                    onChange={(e) => {
+                      setStatus(e.target.value);
+                      setOffset(0);
+                    }}
+                  >
+                    <option value="complete">کامل</option>
+                    <option value="partial">نیمه‌کاره</option>
+                    <option value="attention">نیازمند بررسی</option>
+                    <option value="all">همهٔ موارد مشاهده‌شده</option>
+                  </select>
+                </label>
+              </div>
+              {summary.results.length ? (
+                <div className="op-progress-table">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>چانک</th>
+                        <th>وضعیت</th>
                         {stages.map((s) => (
-                          <td key={s}>{r.stages[s] ? "تکمیل" : "—"}</td>
+                          <th key={s}>{labels[s]}</th>
                         ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {summary.results.map((r) => (
+                        <tr key={r.chunk_index}>
+                          <td>{number(r.chunk_index)}</td>
+                          <td>
+                            <span className={`op-chunk-status is-${r.status}`}>
+                              <i />
+                              {statusText[r.status]}
+                            </span>
+                            {r.reserved && (
+                              <span className="op-chunk-reserved">
+                                در صف / اجرا
+                              </span>
+                            )}
+                          </td>
+                          {stages.map((s) => (
+                            <td key={s}>
+                              {r.stages[s] ? (
+                                <span className="op-stage-done">
+                                  <Check size={13} />
+                                  تکمیل
+                                </span>
+                              ) : (
+                                <span className="op-stage-missing">—</span>
+                              )}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="op-progress-empty">
+                  چانکی با این وضعیت ثبت نشده است.
+                </p>
+              )}
+              <div className="op-pagination">
+                <button
+                  className="days-button"
+                  disabled={!offset}
+                  onClick={() => setOffset(Math.max(0, offset - 10))}
+                >
+                  قبلی
+                </button>
+                <span>
+                  {number(summary.count)} چانک · صفحهٔ {number(offset / 10 + 1)}
+                </span>
+                <button
+                  className="days-button"
+                  disabled={offset + 10 >= summary.count}
+                  onClick={() => setOffset(offset + 10)}
+                >
+                  بعدی
+                </button>
               </div>
-            ) : (
-              <p>چانکی با این وضعیت ثبت نشده است.</p>
-            )}
-            <div className="op-pagination">
-              <button
-                className="days-button"
-                disabled={!offset}
-                onClick={() => setOffset(Math.max(0, offset - 10))}
-              >
-                قبلی
-              </button>
-              <span>
-                {number(summary.count)} چانک · صفحهٔ {number(offset / 10 + 1)}
-              </span>
-              <button
-                className="days-button"
-                disabled={offset + 10 >= summary.count}
-                onClick={() => setOffset(offset + 10)}
-              >
-                بعدی
-              </button>
             </div>
           </details>
-          <p className="op-settings-note">
-            شماره‌ها از صفر هستند. آمار براساس تعداد خروجی‌های ذخیره‌شده و
-            تنظیمات فعلی است؛ اعتبارسنجی نهایی هنگام اجرا انجام می‌شود. زمان
-            مشاهده:{" "}
-            {new Date(summary.inventory_observed_at).toLocaleString("fa-IR", {
-              timeZone: "Asia/Tehran",
-            })}{" "}
-            تهران. دریافت وضعیت هر ۱۰ ثانیه؛ برای خروجی‌های تازهٔ اجرای مستقیم،
-            بازخوانی آمار را بزنید.
-          </p>
+          <footer className="op-progress-footer">
+            <span>
+              <Info size={13} />
+              شمارهٔ چانک‌ها از صفر است؛ آمار از خروجی‌های ذخیره‌شده خوانده
+              می‌شود.
+            </span>
+            <span title="زمان مشاهده به وقت تهران است. برای خروجی‌های تازهٔ اجرای مستقیم، بازخوانی آمار را بزنید. شمارش‌ها براساس تنظیمات فعلی‌اند؛ اعتبارسنجی نهایی هنگام اجرا انجام می‌شود.">
+              <Clock3 size={12} />
+              آخرین مشاهده:{" "}
+              <time dateTime={summary.inventory_observed_at}>
+                {new Date(summary.inventory_observed_at).toLocaleString(
+                  "fa-IR",
+                  {
+                    timeZone: "Asia/Tehran",
+                    month: "short",
+                    day: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  },
+                )}
+              </time>{" "}
+              تهران
+            </span>
+          </footer>
         </>
       )}
     </section>

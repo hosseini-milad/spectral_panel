@@ -78,11 +78,14 @@ const inventory = {
         reads.push({ time: Date.now(), params: url.searchParams });
         const offset = Number(url.searchParams.get("offset") || 0),
           filter = url.searchParams.get("status");
-        const indices = Array.from({ length: 40 }, (_, i) => i).filter(
-          (i) => i !== 30,
-        );
+        const total = inventory.expected_chunks;
+        const complete = refreshed ? total : Math.min(39, total);
+        const indices = Array.from(
+          { length: Math.min(40, total) },
+          (_, i) => i,
+        ).filter((i) => i !== 30);
         const all = refreshed
-          ? Array.from({ length: 50 }, (_, i) => i)
+          ? Array.from({ length: total }, (_, i) => i)
           : indices;
         const rows =
           filter === "partial" && !refreshed
@@ -94,26 +97,28 @@ const inventory = {
           json: {
             snapshot_id: snapshot,
             inventory_observed_at: inventory.updated_at,
-            total_chunks: 50,
-            complete_chunks: refreshed ? 50 : 39,
-            remaining_chunks: refreshed ? 0 : 11,
-            partial_chunks: refreshed ? 0 : 1,
+            total_chunks: total,
+            complete_chunks: complete,
+            remaining_chunks: total - complete,
+            partial_chunks: refreshed || !total ? 0 : 1,
             attention_chunks: 0,
             reserved_remaining_chunks: refreshed ? 0 : 5,
             first_remaining_chunk: refreshed ? null : 30,
-            highest_completed_chunk: refreshed ? 49 : 39,
+            highest_completed_chunk: !total ? null : refreshed ? total - 1 : 39,
             completed_ranges: refreshed
-              ? [{ start_chunk: 0, end_chunk: 49, count: 50 }]
+              ? total
+                ? [{ start_chunk: 0, end_chunk: total - 1, count: total }]
+                : []
               : [
                   { start_chunk: 0, end_chunk: 29, count: 30 },
                   { start_chunk: 31, end_chunk: 39, count: 9 },
                 ],
             completed_ranges_truncated: false,
             stage_counts: {
-              normalize: 40,
-              sample: 40,
-              components: 40,
-              representatives: refreshed ? 50 : 39,
+              normalize: refreshed ? total : 40,
+              sample: refreshed ? total : 40,
+              components: refreshed ? total : 40,
+              representatives: complete,
             },
             suggested_selection: refreshed
               ? null
@@ -129,13 +134,13 @@ const inventory = {
             count: rows.length,
             results: rows.slice(offset, offset + 10).map((i) => ({
               chunk_index: i,
-              status: i === 30 ? "partial" : "complete",
+              status: i === 30 && !refreshed ? "partial" : "complete",
               reserved: false,
               stages: {
                 normalize: true,
                 sample: true,
                 components: true,
-                representatives: i !== 30,
+                representatives: i !== 30 || refreshed,
               },
             })),
           },
@@ -155,7 +160,43 @@ const inventory = {
     });
     await page.goto(base + "/#/operations?day=" + day);
     const panel = page.getByRole("region", { name: "آمار پردازش چانک‌ها" });
-    await panel.getByText("۳۹ از ۵۰", { exact: true }).waitFor();
+    await panel
+      .locator(".op-coverage-percent")
+      .getByText("۳۹ از ۵۰", { exact: true })
+      .waitFor();
+    assert.equal(
+      await panel
+        .getByRole("progressbar", { name: "پوشش تکمیل چانک‌ها", exact: true })
+        .getAttribute("value"),
+      "39",
+    );
+    assert.equal(await panel.locator(".op-chunk-cell").count(), 50);
+    assert.equal(await panel.locator(".op-chunk-cell.is-complete").count(), 39);
+    assert.equal(
+      await panel
+        .getByRole("listitem", {
+          name: "چانک ۳۰: باقی‌مانده، بازهٔ پیشنهادی",
+          exact: true,
+        })
+        .count(),
+      1,
+    );
+    if (process.env.TEST_OUTPUT_DIR) {
+      await panel.screenshot({
+        path: process.env.TEST_OUTPUT_DIR + "/chunk-progress-light.png",
+      });
+      await page.getByRole("button", { name: "تم تیره", exact: true }).click();
+      await panel.screenshot({
+        path: process.env.TEST_OUTPUT_DIR + "/chunk-progress-dark.png",
+      });
+      await page.setViewportSize({ width: 390, height: 844 });
+      await panel.screenshot({
+        path: process.env.TEST_OUTPUT_DIR + "/chunk-progress-mobile.png",
+      });
+      await page.setViewportSize({ width: 1440, height: 1100 });
+      await page.getByRole("button", { name: "تم تیره", exact: true }).click();
+    }
+
     await panel
       .getByRole("button", { name: "ادامهٔ پردازش از ۳۰ تا ۳۹", exact: true })
       .click();
@@ -224,8 +265,49 @@ const inventory = {
       .click();
     assert.equal(refreshPosts, 1);
     await panel
+      .locator(".op-coverage-percent")
       .getByText("۵۰ از ۵۰", { exact: true })
       .waitFor({ timeout: 16000 });
+    assert(
+      await panel
+        .getByRole("button", { name: "ادامهٔ پردازش", exact: true })
+        .isDisabled(),
+    );
+    inventory.expected_chunks = 152;
+    inventory.raw_records = 3040000;
+    refreshed = false;
+    await page.reload();
+    await panel
+      .locator(".op-coverage-percent")
+      .getByText("۳۹ از ۱۵۲", { exact: true })
+      .waitFor();
+    const mapNext = panel.getByRole("button", {
+      name: "چانک‌های بعدی در نقشه",
+      exact: true,
+    });
+    await mapNext.click();
+    await mapNext.click();
+    await mapNext.click();
+    assert.equal(await panel.locator(".op-chunk-cell").count(), 2);
+    assert.equal(
+      await panel
+        .getByRole("listitem", { name: "چانک ۱۵۱: باقی‌مانده", exact: true })
+        .count(),
+      1,
+    );
+    assert(await mapNext.isDisabled());
+    await panel
+      .getByRole("button", { name: "چانک‌های قبلی در نقشه", exact: true })
+      .click();
+    assert.equal(await panel.locator(".op-chunk-cell").count(), 50);
+    inventory.expected_chunks = 0;
+    inventory.raw_records = 0;
+    refreshed = true;
+    await page.reload();
+    await panel
+      .getByText("چانکی برای پردازش وجود ندارد", { exact: true })
+      .waitFor();
+    assert.equal(await panel.locator(".op-chunk-cell").count(), 0);
     assert(
       await panel
         .getByRole("button", { name: "ادامهٔ پردازش", exact: true })
@@ -234,7 +316,7 @@ const inventory = {
     assert.equal(operationPosts, 0);
     assert.deepEqual(errors, []);
     console.log(
-      "PASS: 39 complete with hole at 30; resume prefills range without POST; pagination/filter; previous settings; 10-second polling; explicit refresh; all complete; responsive layout.",
+      "PASS: 39 complete with hole at 30; resume prefills range without POST; pagination/filter; previous settings; 10-second polling; explicit refresh; all complete; 152-chunk map pagination; empty day; responsive layout.",
     );
   } finally {
     await browser.close();
