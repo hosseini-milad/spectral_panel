@@ -18,7 +18,11 @@ export interface InspectionReport extends GroupStats {
   id: string;
   day: string;
   schema_version: string;
-  hierarchy_run_id: string;
+  hierarchy_run_id: string | null;
+  source_kind?: "saved_hierarchy" | "available_components";
+  included_chunk_indices?: number[] | null;
+  expected_chunk_count?: number | null;
+  missing_chunk_indices?: number[] | null;
   daily_representative_run_id: string | null;
   inventory_snapshot_id: string;
   generated_at: string;
@@ -33,8 +37,12 @@ export interface InspectionReport extends GroupStats {
   limitations: string[];
 }
 export interface InspectionContext {
+  inventory_snapshot_id?: string;
   active_hierarchy_run_id: string | null;
   available_hierarchy: boolean;
+  can_build?: boolean;
+  ready_chunk_indices?: number[];
+  ready_chunk_count?: number;
   report: InspectionReport | null;
   stale: boolean;
   build_required: boolean;
@@ -82,7 +90,7 @@ export const inspectionRoot = (day: string) =>
 export async function createInspection(
   day: string,
   snapshot: string,
-  hierarchy: string,
+  hierarchy: string | null,
   key: string,
   signal: AbortSignal,
 ) {
@@ -98,7 +106,7 @@ export async function createInspection(
       },
       body: JSON.stringify({
         snapshot_id: snapshot,
-        hierarchy_run_id: hierarchy,
+        ...(hierarchy ? { hierarchy_run_id: hierarchy } : {}),
       }),
     });
   } catch (error) {
@@ -110,7 +118,7 @@ export async function createInspection(
   if (!response.ok)
     throw new Error(
       response.status === 409
-        ? "اطلاعات روز تغییر کرده یا سلسله‌مراتب روزانهٔ کامل موجود نیست؛ اطلاعات را بازخوانی کنید."
+        ? "اطلاعات روز تغییر کرده یا چانک آماده‌ای برای گزارش وجود ندارد؛ اطلاعات را بازخوانی کنید."
         : "ثبت گزارش جزئیات انجام نشد؛ دوباره تلاش کنید.",
     );
   return response.json() as Promise<{ created: boolean; job: InspectionJob }>;

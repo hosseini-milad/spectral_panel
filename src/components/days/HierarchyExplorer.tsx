@@ -275,9 +275,13 @@ export default function HierarchyExplorer({
   }, [job?.id, job?.status]);
   const busy = posting || job?.status === "queued" || job?.status === "running";
   async function build(fresh = false) {
-    if (inFlight.current || !context.data?.active_hierarchy_run_id) return;
-    const hierarchy = context.data.active_hierarchy_run_id;
-    const identity = `${day.day}:${day.snapshot_id}:${hierarchy}`;
+    if (
+      inFlight.current ||
+      !(context.data?.can_build ?? context.data?.available_hierarchy)
+    )
+      return;
+    const snapshot = context.data?.inventory_snapshot_id ?? day.snapshot_id;
+    const identity = `${day.day}:${snapshot}:${context.data?.active_hierarchy_run_id}:${context.data?.ready_chunk_indices?.join(",")}`;
     if (fresh || accepted.current?.identity !== identity)
       accepted.current = { identity, key: crypto.randomUUID() };
     const controller = new AbortController();
@@ -287,8 +291,8 @@ export default function HierarchyExplorer({
     try {
       const payload = await createInspection(
         day.day,
-        day.snapshot_id,
-        hierarchy,
+        snapshot,
+        null,
         accepted.current.key,
         controller.signal,
       );
@@ -327,8 +331,12 @@ export default function HierarchyExplorer({
   }
   const stale =
     report &&
-    (report.inventory_snapshot_id !== day.snapshot_id ||
-      report.hierarchy_run_id !== context.data?.active_hierarchy_run_id);
+    (report.inventory_snapshot_id !==
+      (context.data?.inventory_snapshot_id ?? day.snapshot_id) ||
+      (report.source_kind === "available_components"
+        ? (report.included_chunk_indices ?? []).join(",") !==
+          (context.data?.ready_chunk_indices ?? []).join(",")
+        : report.hierarchy_run_id !== context.data?.active_hierarchy_run_id));
   const fields = detail.data
     ? Object.keys(detail.data.raw_fields).filter(
         (k) =>
@@ -368,7 +376,10 @@ export default function HierarchyExplorer({
         <div className="hi-actions">
           <button
             className="days-button"
-            disabled={busy || !context.data?.available_hierarchy}
+            disabled={
+              busy ||
+              !(context.data?.can_build ?? context.data?.available_hierarchy)
+            }
             onClick={() =>
               void build(
                 !buildError &&
@@ -435,18 +446,27 @@ export default function HierarchyExplorer({
       )}
       {!context.loading &&
         context.data &&
-        !context.data.available_hierarchy && (
+        !(context.data.can_build ?? context.data.available_hierarchy) && (
           <p className="hi-warning">
-            سلسله‌مراتب روزانهٔ کامل و فعال موجود نیست. برای ساخت گزارش جدید
-            ابتدا فرامولفه‌های روزانه را با روند موجود پروژه ایجاد کنید. گزارش
-            آرشیوی، در صورت وجود، همچنان قابل مرور است.
+            هنوز چانک آمادهٔ دارای گراف و مولفه برای این روز موجود نیست.
+            آماده‌شدن حتی یک چانک برای ساخت گزارش کافی است؛ نیازی به تکمیل همهٔ
+            روز نیست. گزارش آرشیوی همچنان قابل مرور است.
+          </p>
+        )}
+      {!context.loading &&
+        context.data?.can_build &&
+        !context.data.available_hierarchy && (
+          <p className="hi-note" role="status">
+            گزارش از {number(context.data.ready_chunk_count)} چانک آمادهٔ موجود
+            ساخته می‌شود؛ نبود فرامولفهٔ روزانهٔ ذخیره‌شده مانع ساخت گزارش جزئی
+            نیست.
           </p>
         )}
       {!report && !context.loading && !explicit.loading && !explicit.error && (
         <p className="hi-note">
-          گزارش قابل مرور هنوز ذخیره نشده است. ساخت گزارش جزئیات، ارتباط‌های
-          موجود را خوانده و ایندکس می‌کند؛ فرامولفه یا برچسب حملهٔ تازه‌ای
-          نمی‌سازد.
+          گزارش هنوز ذخیره نشده است. با ساخت گزارش جزئیات، چانک‌های آماده خوانده
+          می‌شوند؛ چانک‌های ناتمام کنار گذاشته شده و پوشش گزارش مشخص می‌شود.
+          برچسب حمله از دادهٔ ذخیره‌شده خوانده می‌شود.
         </p>
       )}
       {report && (
@@ -466,6 +486,21 @@ export default function HierarchyExplorer({
               </div>
             ))}
           </div>
+          {report.included_chunk_indices && (
+            <p className="hi-note">
+              چانک‌های گزارش:{" "}
+              <bdi>{report.included_chunk_indices.map(number).join("، ")}</bdi>{" "}
+              · {number(report.included_chunk_indices.length)} از{" "}
+              {number(report.expected_chunk_count)} چانک مورد انتظار
+              {report.missing_chunk_indices?.length
+                ? ` · چانک‌های خارج از این گزارش: ${report.missing_chunk_indices.map(number).join("، ")}`
+                : ""}
+              .{" "}
+              {report.source_kind === "available_components"
+                ? "فرامولفه‌ها برای همین گزارش از چانک‌های آماده محاسبه شده‌اند."
+                : ""}
+            </p>
+          )}
           <p className="hi-note">
             <Counts group={report} /> · نمایندهٔ لایهٔ اول:{" "}
             {number(report.layer1_representatives)} · نمایندهٔ روزانه:{" "}
@@ -487,7 +522,10 @@ export default function HierarchyExplorer({
               </dd>
               <dt>نسخهٔ سلسله‌مراتب</dt>
               <dd>
-                <bdi>{report.hierarchy_run_id}</bdi>
+                <bdi>
+                  {report.hierarchy_run_id ??
+                    "گزارش از چانک‌های آماده؛ بدون تغییر نسخهٔ فعال"}
+                </bdi>
               </dd>
               <dt>نسخهٔ نمایندهٔ روزانه</dt>
               <dd>

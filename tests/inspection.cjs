@@ -29,18 +29,27 @@ const day = {
   updated_at: "2026-11-12T11:00:00Z",
 };
 
+Object.assign(day, {
+  raw_records: 2500,
+  expected_chunks: 25,
+  observed_chunks: 2,
+  complete_chunks: 2,
+  missing_chunks: 23,
+  chunk_coverage_percent: 8,
+  status: "partial",
+});
+const contextSnapshot = "a4c64541-1dbf-48c8-9cc9-b6371d91d6f8";
 const reportId = "c5724874-c7cf-45ab-a4a6-9c697a1096d1";
 const root = `/api/v1/days/${day.day}/inspection/`;
 const baseReport = root + "reports/" + reportId + "/";
 const jobUrl = root + "jobs/" + jobId + "/";
-const hId = "hierarchy-version-1";
 const stats = (attack, normal, daily = 0, missing = 0) => ({
   labels: { attack, normal, unknown: 0 },
   composition:
     attack && normal ? "mixed" : attack ? "attack_only" : "normal_only",
   observation_count: attack + normal,
   layer1_representatives: attack && normal ? 2 : 1,
-  daily_representatives: daily,
+  daily_representatives: null,
   missing_raw_records: missing,
   label_conflicts: 0,
 });
@@ -49,9 +58,13 @@ const report = {
   id: reportId,
   day: day.day,
   schema_version: "day_inspection_v1",
-  hierarchy_run_id: hId,
-  daily_representative_run_id: "daily-version-1",
-  inventory_snapshot_id: snapshot,
+  hierarchy_run_id: null,
+  source_kind: "available_components",
+  included_chunk_indices: [0, 1],
+  expected_chunk_count: 25,
+  missing_chunk_indices: Array.from({ length: 23 }, (_, i) => i + 2),
+  daily_representative_run_id: null,
+  inventory_snapshot_id: contextSnapshot,
   generated_at: day.updated_at,
   coverage_status: "partial",
   meta_count: 2,
@@ -142,7 +155,7 @@ const rows = components.flatMap((component, k) =>
       raw_available: !missing,
       normalized_available: true,
       layer1_representative: i === 0,
-      daily_representative: k === 0 && i === 0,
+      daily_representative: null,
       raw_summary: raw,
       raw_fields: raw,
       normalized_fields: normalized,
@@ -186,8 +199,7 @@ const rows = components.flatMap((component, k) =>
         posts++;
         keys.push(route.request().headers()["idempotency-key"]);
         assert.deepEqual(route.request().postDataJSON(), {
-          snapshot_id: snapshot,
-          hierarchy_run_id: hId,
+          snapshot_id: contextSnapshot,
         });
         if (abortFirst) {
           abortFirst = false;
@@ -211,8 +223,12 @@ const rows = components.flatMap((component, k) =>
       if (url.pathname === root)
         return route.fulfill({
           json: {
-            active_hierarchy_run_id: hId,
-            available_hierarchy: true,
+            inventory_snapshot_id: contextSnapshot,
+            active_hierarchy_run_id: null,
+            available_hierarchy: false,
+            can_build: true,
+            ready_chunk_indices: [0, 1],
+            ready_chunk_count: 2,
             report: created ? report : null,
             stale: false,
             build_required: !created,
@@ -301,6 +317,9 @@ const rows = components.flatMap((component, k) =>
       .filter({ hasText: "ارتباط قطع شد" })
       .waitFor();
     assert.equal(posts, 1);
+    const firstStatus = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === jobUrl,
+    );
     await page
       .getByRole("button", { name: "تلاش دوباره", exact: true })
       .click();
@@ -308,6 +327,7 @@ const rows = components.flatMap((component, k) =>
       .getByRole("status")
       .filter({ hasText: "worker گزارش فعال نیست" })
       .waitFor();
+    await firstStatus;
     assert.equal(keys[0], keys[1]);
     const count = polls.length;
     await page.waitForTimeout(2200);
