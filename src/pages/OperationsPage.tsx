@@ -28,6 +28,7 @@ import {
   type Settings,
   type Request,
 } from "../api/operations";
+import { OperationProgress } from "../components/operations/OperationProgress";
 import { OperationStep } from "../components/operations/OperationStep";
 import { PipelineLogs } from "../components/operations/PipelineLogs";
 import { dayDetailsPath, isISODate } from "../lib/dayNavigation";
@@ -300,6 +301,23 @@ export function OperationsPage() {
               : "یک روز از فهرست سرور انتخاب کنید."}
           </div>
         )}
+        {day.data &&
+          (day.data.chunk_size === null ||
+            day.data.chunk_size === settings.chunk_size) && (
+            <OperationProgress
+              key={day.data.day}
+              day={day.data.day}
+              snapshot={day.data.snapshot_id}
+              settings={settings}
+              onContinue={(range) => {
+                setMode("range");
+                setStart(range.start_chunk);
+                setEnd(range.end_chunk);
+              }}
+              onSettings={setSettings}
+              onRefresh={day.retry}
+            />
+          )}
         <div className="op-scope-fields">
           <label>
             دامنهٔ اجرا

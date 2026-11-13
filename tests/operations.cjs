@@ -123,6 +123,40 @@ const makeRun = (id, body) => ({
           json: { created: posts !== 2, run },
         });
       }
+      if (url.pathname.endsWith("/operations/progress/"))
+        return route.fulfill({
+          json: {
+            snapshot_id: snapshot,
+            inventory_observed_at: day.updated_at,
+            total_chunks: 25,
+            complete_chunks: 0,
+            remaining_chunks: 25,
+            partial_chunks: 0,
+            attention_chunks: 0,
+            reserved_remaining_chunks: 0,
+            first_remaining_chunk: 0,
+            highest_completed_chunk: null,
+            completed_ranges: [],
+            completed_ranges_truncated: false,
+            stage_counts: {
+              normalize: 0,
+              sample: 0,
+              components: 0,
+              representatives: 0,
+            },
+            suggested_selection: {
+              start_chunk: 0,
+              end_chunk: 9,
+              count: 10,
+              reused_count: 0,
+              remaining_count: 10,
+            },
+            latest_run_settings: null,
+            latest_settings_compatible: false,
+            count: 0,
+            results: [],
+          },
+        });
       if (url.pathname === "/api/v1/operations/runs/")
         return route.fulfill({
           json: {
