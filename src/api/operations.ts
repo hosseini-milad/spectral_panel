@@ -33,6 +33,8 @@ export interface Run {
   chunk_end: number;
   chunk_count: number;
   settings: Settings;
+  cancel_requested: boolean;
+  cancel_requested_at: string | null;
   selection: Selection;
   current_chunk: number | null;
   current_stage: Stage | null;
@@ -108,11 +110,13 @@ export const statusLabels: Record<string, string> = {
   succeeded: "تکمیل‌شده",
   failed: "ناموفق",
   interrupted: "متوقف‌شده",
+  cancelled: "لغوشده",
   blocked: "متوقف به علت خطای مرحلهٔ قبلی",
 };
 const messages: Record<string, string> = {
   run_started: "پردازش آغاز شد",
   run_completed: "پردازش پایان یافت",
+  run_cancelled: "ادامهٔ پردازش لغو شد؛ خروجی چانک‌های تکمیل‌شده حفظ شد",
   stage_started: "مرحله آغاز شد",
   stage_completed: "مرحله تکمیل شد",
   stage_reused: "خروجی سازگار موجود استفاده شد",
@@ -166,4 +170,29 @@ export async function submitOperation(day: string, body: Request, key: string) {
           : "ثبت عملیات انجام نشد؛ دوباره تلاش کنید.",
     );
   return response.json() as Promise<{ created: boolean; run: Run }>;
+}
+
+export async function cancelOperation(id: string): Promise<Run> {
+  let response: Response;
+  try {
+    response = await fetch(apiPath(`operations/runs/${id}/cancel/`), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({}),
+    });
+  } catch {
+    throw new Error(
+      "دریافت پاسخ لغو ممکن نشد؛ وضعیت اجرا را بررسی یا دوباره تلاش کنید.",
+    );
+  }
+  if (!response.ok)
+    throw new Error(
+      response.status === 409
+        ? "این اجرا پیش از ثبت لغو پایان یافته است؛ وضعیت را بازخوانی کنید."
+        : "ثبت درخواست لغو انجام نشد؛ دوباره تلاش کنید.",
+    );
+  return response.json() as Promise<Run>;
 }

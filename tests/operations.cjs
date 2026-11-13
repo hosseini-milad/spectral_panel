@@ -34,12 +34,16 @@ const keys = [];
 let abortFirst = true;
 let posts = 0;
 let running = false;
+let cancelPosts = 0;
+let finishCancelled = false;
 const readTimes = [];
 const bodies = [];
 const makeRun = (id, body) => ({
   id,
   day: day.day,
   status: "queued",
+  cancel_requested: false,
+  cancel_requested_at: null,
   created_at: day.updated_at,
   started_at: null,
   finished_at: null,
@@ -95,6 +99,20 @@ const makeRun = (id, body) => ({
     page.on("pageerror", (e) => errors.push(e.message));
     await page.route("**/api/v1/**", async (route) => {
       const url = new URL(route.request().url());
+      if (
+        route.request().method() === "POST" &&
+        url.pathname.endsWith("/cancel/")
+      ) {
+        cancelPosts++;
+        const id = url.pathname.match(/\/runs\/([^/]+)\//)[1];
+        const run = runs.find((r) => r.id === id);
+        assert.deepEqual(route.request().postDataJSON(), {});
+        run.cancel_requested = true;
+        run.cancel_requested_at = day.updated_at;
+        run.status = running ? "running" : "cancelled";
+        run.current_chunk = running ? run.chunk_start : null;
+        return route.fulfill({ status: running ? 202 : 200, json: run });
+      }
       if (route.request().method() === "POST") {
         assert.equal(url.pathname, `/api/v1/days/${day.day}/operations/`);
         posts++;
@@ -215,6 +233,22 @@ const makeRun = (id, body) => ({
               ],
             },
           });
+        if (run.cancel_requested) {
+          const stopped = finishCancelled || run.status === "cancelled";
+          return route.fulfill({
+            json: {
+              ...run,
+              status: stopped ? "cancelled" : "running",
+              current_chunk: stopped ? null : run.chunk_start,
+              current_stage: stopped ? null : "sample",
+              progress: {
+                ...run.progress,
+                completed_units: stopped ? 4 : 2,
+                percent: stopped ? 10 : 5,
+              },
+            },
+          });
+        }
         readTimes.push(Date.now());
         return route.fulfill({
           json: running
@@ -360,9 +394,72 @@ const makeRun = (id, body) => ({
         path: process.env.TEST_OUTPUT_DIR + "/operations-real-mobile.png",
         fullPage: true,
       });
+    const cancel = page.getByRole("button", {
+      name: "لغو ادامهٔ پردازش",
+      exact: true,
+    });
+    await cancel.evaluate((button) => {
+      button.click();
+      button.click();
+    });
+    await page
+      .getByRole("button", { name: "در انتظار توقف", exact: true })
+      .waitFor();
+    assert.equal(
+      cancelPosts,
+      1,
+      "double click must not submit two cancellation requests",
+    );
+    assert(
+      await page
+        .getByRole("button", { name: "در انتظار توقف", exact: true })
+        .isDisabled(),
+    );
+    await page
+      .getByText("درخواست لغو ثبت شد؛ چانک", { exact: false })
+      .waitFor();
+    await page.reload();
+    await page
+      .getByRole("button", { name: "در انتظار توقف", exact: true })
+      .waitFor();
+    assert.equal(
+      cancelPosts,
+      1,
+      "reload must read persisted cancellation, not POST again",
+    );
+    finishCancelled = true;
+    await page
+      .locator(".op-execution-state.cancelled")
+      .waitFor({ timeout: 14000 });
+    assert.equal(
+      await page
+        .getByRole("button", { name: "لغو ادامهٔ پردازش", exact: true })
+        .count(),
+      0,
+    );
+    assert.equal(
+      await page
+        .getByLabel("پیشرفت کل عملیات", { exact: true })
+        .getAttribute("value"),
+      "10",
+      "cancellation must not fake 100 percent",
+    );
+    assert.equal(posts, 6, "cancelling must not create another operation");
+    running = false;
+    const queuedId = runs[1].id;
+    await page.locator(".op-queue-row").filter({ hasText: queuedId }).click();
+    await page
+      .getByRole("button", { name: "لغو ادامهٔ پردازش", exact: true })
+      .click();
+    await page.locator(".op-execution-state.cancelled").waitFor();
+    assert.equal(cancelPosts, 2);
+    assert(
+      runs.some((r) => !r.cancel_requested),
+      "other queued operations must be unaffected",
+    );
     assert.deepEqual(errors, []);
     console.log(
-      "PASS: server days; range 1–10 and 11–20; page/single/all; double-click and retry keys; 10-second truthful polling; queued next request while running; persisted reload; events/tasks and responsive layout.",
+      "PASS: server days; range 1–10 and 11–20; page/single/all; double-click and retry keys; 10-second truthful polling; queued next request while running; persisted reload; events/tasks; graceful cancellation, duplicate-click guard, persisted pending cancellation, truthful cancelled progress, queued cancellation and responsive layout.",
     );
   } finally {
     await browser.close();

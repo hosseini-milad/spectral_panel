@@ -2335,3 +2335,58 @@
     transition: none;
   }
 }
+
+.op-cancel-control {
+  margin: 14px 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.op-cancel-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 39px;
+  border: 1px solid var(--warning-border);
+  border-radius: 8px;
+  color: var(--warning-text);
+  background: var(--warning-bg);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.op-cancel-button:hover:not(:disabled) {
+  border-color: var(--warning-text);
+}
+.op-cancel-button:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+.op-cancel-button:focus-visible {
+  outline: 2px solid var(--warning-text);
+  outline-offset: 3px;
+}
+.op-cancel-control p {
+  font-size: 9px;
+  color: var(--text-muted);
+  line-height: 1.9;
+  margin-top: 8px;
+}
+.op-cancel-completed {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 10px;
+  line-height: 1.9;
+  color: var(--text-secondary);
+  margin-block: 12px;
+}
+.op-cancel-completed svg {
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+.op-execution-state.cancelled {
+  color: var(--text-secondary);
+  background: var(--surface-soft);
+}

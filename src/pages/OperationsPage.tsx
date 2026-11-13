@@ -13,6 +13,8 @@ import {
   Settings2,
   ArrowUpLeft,
   ShieldCheck,
+  Square,
+  Clock3,
 } from "lucide-react";
 import { dateLabel, number } from "../data/days";
 import { apiPath, type InventoryDay, type Page } from "../api/days";
@@ -20,6 +22,7 @@ import { useApi } from "../hooks/useApi";
 import { useOperations } from "../hooks/useOperations";
 import {
   submitOperation,
+  cancelOperation,
   stages,
   labels,
   statusLabels,
@@ -75,6 +78,15 @@ export function OperationsPage() {
   );
   const run = monitor.run;
   const [sending, setSending] = useState(false);
+  const [cancellingRun, setCancellingRun] = useState<string | null>(null);
+  const [cancelAcknowledged, setCancelAcknowledged] = useState<string | null>(
+    null,
+  );
+  const [cancelError, setCancelError] = useState<{
+    id: string;
+    message: string;
+  } | null>(null);
+  const cancellingRef = useRef(false);
   const [submitError, setSubmitError] = useState("");
   const inFlight = useRef(false);
   const savedRequest = useRef<{ identity: string; key: string } | null>(null);
@@ -111,6 +123,30 @@ export function OperationsPage() {
     run?.status === "running" ||
     run?.status === "queued" ||
     run?.status === "preparing";
+  const cancelPending =
+    !!run && running && (run.cancel_requested || cancelAcknowledged === run.id);
+  async function cancelCurrentRun() {
+    if (!run || !running || cancelPending || cancellingRef.current) return;
+    const id = run.id;
+    cancellingRef.current = true;
+    setCancellingRun(id);
+    setCancelError(null);
+    try {
+      const result = await cancelOperation(id);
+      if (result.cancel_requested) setCancelAcknowledged(id);
+      monitor.retry();
+    } catch (error) {
+      setCancelError({ id, message: (error as Error).message });
+      monitor.retry();
+    } finally {
+      cancellingRef.current = false;
+      setCancellingRun(null);
+    }
+  }
+  useEffect(() => {
+    if (run?.cancel_requested || run?.status === "cancelled")
+      setCancelError(null);
+  }, [run?.id, run?.cancel_requested, run?.status]);
   const stageDescriptions = [
     "آماده‌سازی ویژگی‌های رکوردهای خام چانک؛ حدود نرمال‌سازی از کل روز.",
     "انتخاب کاندیدها با روش موجود خوشه‌بندی و ریسک/نوآوری.",
@@ -582,6 +618,44 @@ export function OperationsPage() {
                   {run.current_stage ? ` · ${labels[run.current_stage]}` : ""}.
                   درصد داخل محاسبه اندازه‌گیری نشده است.
                 </p>
+                {running && (
+                  <div className="op-cancel-control">
+                    <button
+                      className="op-cancel-button"
+                      disabled={cancelPending || cancellingRun === run.id}
+                      onClick={() => void cancelCurrentRun()}
+                    >
+                      {cancelPending ? (
+                        <Clock3 size={15} />
+                      ) : (
+                        <Square size={13} />
+                      )}
+                      {cancellingRun === run.id
+                        ? "در حال ثبت لغو…"
+                        : cancelPending
+                          ? "در انتظار توقف"
+                          : "لغو ادامهٔ پردازش"}
+                    </button>
+                    <p role={cancelPending ? "status" : undefined}>
+                      {cancelPending
+                        ? run.current_chunk !== null
+                          ? `درخواست لغو ثبت شد؛ چانک ${number(run.current_chunk)} تکمیل می‌شود و چانک بعدی شروع نخواهد شد.`
+                          : "درخواست لغو ثبت شد؛ وضعیت توقف در حال دریافت است."
+                        : "چانک جاری کامل می‌شود؛ سپس ادامهٔ این اجرا لغو خواهد شد."}
+                    </p>
+                  </div>
+                )}
+                {run.status === "cancelled" && (
+                  <p className="op-cancel-completed" role="status">
+                    <Square size={12} />
+                    ادامهٔ اجرا لغو شد؛ خروجی چانک‌های تکمیل‌شده حفظ شده است.
+                  </p>
+                )}
+                {cancelError?.id === run.id && (
+                  <p className="op-failure-note" role="alert">
+                    {cancelError.message}
+                  </p>
+                )}
                 {running && !run.worker.online && (
                   <p className="op-failure-note" role="status">
                     worker علمی فعال نیست؛ فرمان run_api_worker را بررسی کنید.
@@ -643,7 +717,10 @@ export function OperationsPage() {
                 {number(item.chunk_end)}
               </span>
               <span>
-                {statusLabels[item.status]} · {number(item.progress.percent)}٪
+                {item.cancel_requested && item.status === "running"
+                  ? "در انتظار توقف پس از چانک جاری"
+                  : statusLabels[item.status]}{" "}
+                · {number(item.progress.percent)}٪
               </span>
             </button>
           ))
