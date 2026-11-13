@@ -42,7 +42,7 @@ export const navigation = [
     label: "گزارش",
     group: "analysis",
     icon: ChartNoAxesCombined,
-    description: "درخواست نمودار برای انتخاب فعلی و مرور خروجی‌های پیشین.",
+    description: "مرور فرامولفه‌ها، مولفه‌ها و جزئیات مشاهدات تا دادهٔ اصلی.",
   },
   {
     path: "/models",

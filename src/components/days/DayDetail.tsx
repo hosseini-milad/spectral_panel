@@ -18,6 +18,7 @@ import {
 } from "../../api/days";
 import { useApi } from "../../hooks/useApi";
 
+const HierarchyExplorer = lazy(() => import("./HierarchyExplorer"));
 const DailySchematic = lazy(() => import("./ChunkSchematic"));
 
 export function DayDetail({ day: initialDay }: { day: InventoryDay }) {
@@ -178,6 +179,15 @@ export function DayDetail({ day: initialDay }: { day: InventoryDay }) {
                 </p>
               </div>
             </div>
+            <Suspense
+              fallback={
+                <p className="chunk-detail-note">
+                  در حال آماده‌سازی مرور داده‌های روز…
+                </p>
+              }
+            >
+              <HierarchyExplorer key={day.day} day={day} />
+            </Suspense>
             <Suspense
               fallback={
                 <p className="chunk-detail-note">
