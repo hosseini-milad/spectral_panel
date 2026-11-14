@@ -12,6 +12,7 @@ export function useOperations(
   runId: string | null,
   taskOffset: number,
   eventOffset: number,
+  failedOnly = false,
 ) {
   const scope = `${day ?? ""}:${runId ?? ""}`;
   const [data, setData] = useState<{
@@ -32,7 +33,7 @@ export function useOperations(
         const [run, tasks, events] = await Promise.all([
           runId ? getRun(runId, controller.signal) : Promise.resolve(undefined),
           runId
-            ? getTasks(runId, taskOffset, controller.signal)
+            ? getTasks(runId, taskOffset, controller.signal, failedOnly)
             : Promise.resolve(undefined),
           runId
             ? getJSON<Page<RunEvent>>(
@@ -60,7 +61,7 @@ export function useOperations(
       controller.abort();
       clearTimeout(timer);
     };
-  }, [day, runId, taskOffset, eventOffset, attempt, scope]);
+  }, [day, runId, taskOffset, eventOffset, attempt, scope, failedOnly]);
   return {
     ...(data.scope === scope ? data : {}),
     error,

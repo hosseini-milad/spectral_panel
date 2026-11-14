@@ -76,6 +76,7 @@ let offline = false,
   failQueue = false,
   posts = 0;
 const reads = [];
+const clears = [];
 (async () => {
   const browser = await chromium.launch({
     headless: true,
@@ -95,6 +96,25 @@ const reads = [];
     await page.route("**/api/v1/**", async (route) => {
       const req = route.request(),
         url = new URL(req.url());
+      if (
+        req.method() === "POST" &&
+        url.pathname === "/api/v1/operations/queue/clear/"
+      ) {
+        clears.push(req.postDataJSON());
+        if (clears.length === 1) {
+          // Cancellation succeeded but the response was lost. A new submission
+          // must survive a retry using the originally pinned cutoff.
+          waiting.splice(0, waiting.length, run(8, dateB));
+          return route.abort("failed");
+        }
+        return route.fulfill({
+          json: {
+            cancelled_count: 0,
+            skipped_count: 0,
+            remaining_queued_count: 1,
+          },
+        });
+      }
       if (req.method() === "POST") {
         posts++;
         throw Error("Queue navigation must be read-only");
@@ -124,7 +144,7 @@ const reads = [];
             },
             active_run: offline ? null : active,
             unconfirmed_runs: offline ? [active] : [],
-            queued_total: 6,
+            queued_total: waiting.length,
             count: selected.length,
             next: offset + 5 < selected.length ? "next" : null,
             previous: offset ? "previous" : null,
@@ -326,9 +346,55 @@ const reads = [];
       .getByText("اجرای صف به run_api_worker نیاز دارد.", { exact: false })
       .waitFor();
     assert.equal(posts, 0);
+    offline = false;
+    await queue
+      .getByRole("button", { name: "بازخوانی صف اجراها", exact: true })
+      .click();
+    await queue.getByText("فعال روی سرور", { exact: true }).waitFor();
+    const clear = queue.getByRole("button", {
+      name: "پاک‌کردن همهٔ صف انتظار",
+      exact: true,
+    });
+    await clear.click();
+    const confirmation = queue.getByRole("region", {
+      name: "تأیید پاک‌کردن صف",
+      exact: true,
+    });
+    await confirmation
+      .getByRole("button", { name: "انصراف", exact: true })
+      .click();
+    assert.equal(clears.length, 0, "Dismissal never mutates the queue");
+    await clear.click();
+    const confirm = confirmation.getByRole("button", {
+      name: "تأیید پاک‌کردن صف",
+      exact: true,
+    });
+    await confirm.evaluate((button) => {
+      button.click();
+      button.click();
+    });
+    await confirmation.getByRole("alert").waitFor();
+    assert.equal(clears.length, 1, "Duplicate clicks are guarded");
+    await confirm.click();
+    await confirmation.waitFor({ state: "detached" });
+    await page.waitForFunction(
+      () => document.querySelectorAll(".execution-waiting-row").length === 1,
+    );
+    assert.deepEqual(
+      clears[0],
+      clears[1],
+      "Retry reuses the cutoff; new queued jobs survive",
+    );
+    assert(!page.url().includes("offset="), "Clear resets queue paging");
+    await queue.getByText("فعال روی سرور", { exact: true }).waitFor();
+    assert.equal(
+      await queue.locator(".execution-active.is-running").count(),
+      1,
+      "Active execution is unaffected",
+    );
     assert.deepEqual(errors, []);
     console.log(
-      "PASS: global active owner differs from selected queued run; cross-day active visibility; FIFO paging/filter; selecting runs; ten-second polling; offline worker explanation; read-only and responsive.",
+      "PASS: global active owner differs from selected queued run; cross-day active visibility; FIFO paging/filter; selecting runs; ten-second polling; offline worker explanation; read-only navigation; safe clear confirmation, retry cutoff and double-click guard; responsive.",
     );
   } finally {
     await browser.close();

@@ -53,6 +53,20 @@ export function durationLabel(seconds: number) {
     ? `${n.format(value)} ثانیه`
     : `${n.format(Math.floor(value / 60))} دقیقه و ${n.format(value % 60)} ثانیه`;
 }
+export interface OperationError {
+  code: string;
+  reason_code?: string;
+  message?: string;
+  suggestion?: string;
+  diagnostic_id?: string | null;
+  context?: {
+    expected_count?: number;
+    actual_count?: number;
+    timeout_seconds?: number;
+    exit_code?: number;
+    resource?: string;
+  };
+}
 export interface Run {
   id: string;
   day: string;
@@ -63,7 +77,7 @@ export interface Run {
   recent_errors?: {
     chunk_index: number;
     stage: Stage;
-    error: { code: string };
+    error: OperationError;
     finished_at: string | null;
   }[];
   status: string;
@@ -81,7 +95,7 @@ export interface Run {
   selection: Selection;
   current_chunk: number | null;
   current_stage: Stage | null;
-  error: { code: string } | null;
+  error: OperationError | null;
   inventory_refresh: string;
   configuration_version: string;
   configuration_hash: string;
@@ -129,7 +143,7 @@ export interface Task {
     unit: string;
     graph_parameters?: Record<string, unknown>;
   } | null;
-  error: { code: string } | null;
+  error: OperationError | null;
 }
 export interface RunEvent {
   sequence: number;
@@ -198,9 +212,18 @@ export const eventMessage = (code: string) =>
 export const runPath = (id: string) => apiPath(`operations/runs/${id}/`);
 export const getRun = (id: string, signal?: AbortSignal) =>
   getJSON<Run>(runPath(id), signal);
-export const getTasks = (id: string, offset: number, signal?: AbortSignal) =>
+export const getTasks = (
+  id: string,
+  offset: number,
+  signal?: AbortSignal,
+  failedOnly = false,
+) =>
   getJSON<Page<Task>>(
-    apiPath(`operations/runs/${id}/tasks/`, { limit: 10, offset }),
+    apiPath(`operations/runs/${id}/tasks/`, {
+      limit: 10,
+      offset,
+      failed_only: failedOnly ? "true" : undefined,
+    }),
     signal,
   );
 export async function submitOperation(day: string, body: Request, key: string) {
@@ -284,4 +307,31 @@ export async function retryFailedOperation(
         : "ثبت اجرای مجدد انجام نشد؛ مهلت مرحله و اطلاعات روز را بررسی کنید.",
     );
   return response.json() as Promise<{ created: boolean; run: Run }>;
+}
+
+export async function clearWaitingQueue(before: string) {
+  let response: Response;
+  try {
+    response = await fetch(apiPath("operations/queue/clear/"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ before }),
+    });
+  } catch {
+    throw new Error(
+      "پاسخ پاک‌کردن صف دریافت نشد؛ تلاش دوباره فقط همان صفِ مشاهده‌شده را پاک می‌کند.",
+    );
+  }
+  if (!response.ok)
+    throw new Error(
+      "پاک‌کردن صف انجام نشد؛ وضعیت را بررسی یا دوباره تلاش کنید.",
+    );
+  return response.json() as Promise<{
+    cancelled_count: number;
+    skipped_count: number;
+    remaining_queued_count: number;
+  }>;
 }

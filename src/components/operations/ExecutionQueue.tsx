@@ -1,5 +1,6 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
+  Trash2,
   Activity,
   ArrowUpLeft,
   Check,
@@ -12,6 +13,7 @@ import {
 } from "lucide-react";
 import { apiPath, getJSON, type Page } from "../../api/days";
 import {
+  clearWaitingQueue,
   labels,
   phaseLabels,
   durationLabel,
@@ -62,6 +64,31 @@ export function ExecutionQueue({
   onPageChange: (offset: number) => void;
   filters: ReactNode;
 }) {
+  const [clearBefore, setClearBefore] = useState<string | null>(null);
+  const [clearing, setClearing] = useState(false);
+  const clearFlight = useRef(false);
+  const [clearError, setClearError] = useState("");
+  const [clearMessage, setClearMessage] = useState("");
+  async function clearQueue() {
+    if (!clearBefore || clearFlight.current) return;
+    clearFlight.current = true;
+    setClearing(true);
+    setClearError("");
+    try {
+      const result = await clearWaitingQueue(clearBefore);
+      setClearMessage(
+        `${number(result.cancelled_count)} اجرای منتظر لغو شد؛ ${number(result.remaining_queued_count)} اجرا در صف باقی است.${result.skipped_count ? ` ${number(result.skipped_count)} مورد به دلیل تغییر وضعیت کنار گذاشته شد.` : ""}`,
+      );
+      setClearBefore(null);
+      onPageChange(0);
+      setAttempt((n) => n + 1);
+    } catch (e) {
+      setClearError((e as Error).message);
+    } finally {
+      clearFlight.current = false;
+      setClearing(false);
+    }
+  }
   const [attempt, setAttempt] = useState(0);
   const [data, setData] = useState<{ url: string; value: Snapshot }>();
   const [error, setError] = useState("");
@@ -183,6 +210,65 @@ export function ExecutionQueue({
           </button>
         </div>
       </div>
+      <div className="jq-queue-actions">
+        <span>
+          پاک‌کردن صف شامل همهٔ روزهاست؛ اجرای فعال و خروجی‌ها حفظ می‌شوند.
+        </span>
+        <button
+          className="jq-clear-button"
+          disabled={
+            !snapshot?.queued_total || !!error || clearing || !!clearBefore
+          }
+          onClick={() => {
+            setClearBefore(snapshot!.observed_at);
+            setClearError("");
+            setClearMessage("");
+          }}
+        >
+          <Trash2 size={14} />
+          پاک‌کردن همهٔ صف انتظار
+        </button>
+      </div>
+      {clearBefore && (
+        <div
+          className="jq-clear-confirm"
+          role="region"
+          aria-label="تأیید پاک‌کردن صف"
+        >
+          <div>
+            <strong>همهٔ اجراهای منتظرِ مشاهده‌شده لغو شوند؟</strong>
+            <p>
+              فیلتر روز و صفحه‌بندی محدودیتی ایجاد نمی‌کنند. اجرای فعال ادامه
+              می‌یابد؛ سوابق اجراها حذف نمی‌شوند.
+            </p>
+          </div>
+          <div>
+            <button
+              className="jq-clear-button"
+              disabled={clearing}
+              onClick={() => void clearQueue()}
+            >
+              {clearing ? "در حال پاک‌کردن…" : "تأیید پاک‌کردن صف"}
+            </button>
+            <button
+              className="jq-text-button"
+              disabled={clearing}
+              onClick={() => {
+                setClearBefore(null);
+                setClearError("");
+              }}
+            >
+              انصراف
+            </button>
+          </div>
+          {clearError && <p role="alert">{clearError}</p>}
+        </div>
+      )}
+      {clearMessage && (
+        <p className="jq-clear-result" role="status">
+          {clearMessage}
+        </p>
+      )}
       {error && (
         <p className="jq-notice warning" role="alert">
           {error}

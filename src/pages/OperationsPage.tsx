@@ -31,6 +31,7 @@ import {
   type Settings,
   type Request,
 } from "../api/operations";
+import { ErrorDetails } from "../components/operations/ErrorDetails";
 import { OperationProgress } from "../components/operations/OperationProgress";
 import { OperationStep } from "../components/operations/OperationStep";
 import { PipelineLogs } from "../components/operations/PipelineLogs";
@@ -69,7 +70,14 @@ export function OperationsPage() {
   useEffect(() => {
     setSettings((s) => ({ ...s, chunk_size: day.data?.chunk_size ?? 20000 }));
   }, [day.data?.day, day.data?.chunk_size]);
-  const monitor = useOperations(dayCode, runId, taskOffset, eventOffset);
+  const [failedOnly, setFailedOnly] = useState(false);
+  const monitor = useOperations(
+    dayCode,
+    runId,
+    taskOffset,
+    eventOffset,
+    failedOnly,
+  );
   const latestRun = useApi<Page<Run>>(
     dayCode && !runId
       ? apiPath("operations/runs/", { day: dayCode, limit: 1 })
@@ -506,12 +514,13 @@ export function OperationsPage() {
                     <b>
                       چانک {number(item.chunk_index)} · {labels[item.stage]}
                     </b>
-                    <span>{eventMessage(item.error.code)}</span>
+                    <ErrorDetails error={item.error} />
                   </li>
                 ))}
               </ul>
               <small>
-                آخرین خطاها؛ فهرست کامل کارها و رویدادها پایین صفحه است.
+                آخرین خطاها؛ برای مرور همهٔ موارد، نمای «فقط خطاها» در جزئیات
+                کارهای اجرا را انتخاب کنید.
               </small>
             </div>
           )}
@@ -771,9 +780,9 @@ export function OperationsPage() {
                   </p>
                 )}
                 {run.error && (
-                  <p role="alert" className="op-failure-note">
-                    {eventMessage(run.error.code)}
-                  </p>
+                  <div role="alert" className="op-failure-note">
+                    <ErrorDetails error={run.error} />
+                  </div>
                 )}
                 <p className="op-settings-note">
                   نسخهٔ تنظیمات: <bdi>{run.configuration_version}</bdi> · آخرین
@@ -799,7 +808,21 @@ export function OperationsPage() {
         <section className="op-card op-queue">
           <div className="op-section-heading">
             <h2>جزئیات کارهای اجرا</h2>
-            <span>{number(monitor.tasks?.count ?? 0)} چانک‌ـ‌مرحله</span>
+            <label className="op-task-filter">
+              نمایش
+              <select
+                aria-label="فیلتر کارهای اجرا"
+                value={failedOnly ? "errors" : "all"}
+                onChange={(e) => {
+                  setFailedOnly(e.target.value === "errors");
+                  setTaskOffset(0);
+                }}
+              >
+                <option value="all">همهٔ کارها</option>
+                <option value="errors">فقط خطاها</option>
+              </select>
+              <span>{number(monitor.tasks?.count ?? 0)} مورد</span>
+            </label>
           </div>
           <div className="op-task-scroll">
             <table className="op-task-table">
@@ -824,11 +847,13 @@ export function OperationsPage() {
                         : "—"}
                     </td>
                     <td>
-                      {task.error
-                        ? eventMessage(task.error.code)
-                        : task.result?.reused
-                          ? "استفاده از خروجی موجود"
-                          : "—"}
+                      {task.error ? (
+                        <ErrorDetails error={task.error} />
+                      ) : task.result?.reused ? (
+                        "استفاده از خروجی موجود"
+                      ) : (
+                        "—"
+                      )}
                       {task.result?.graph_parameters && (
                         <details>
                           <summary>پارامترهای گراف</summary>

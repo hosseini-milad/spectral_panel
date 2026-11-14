@@ -2,6 +2,18 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
+const diagnosticError = {
+  code: "incomplete_output",
+  reason_code: "incomplete_output",
+  message: "تعداد خروجی مرحله به مقدار مورد انتظار نرسید.",
+  suggestion: "تعداد ثبت‌شده را بررسی و چانک ناموفق را دوباره اجرا کنید.",
+  diagnostic_id: "83cf661b-c684-42a9-ad96-3ca3d14cae70",
+  context: {
+    resource: "candidate_records",
+    expected_count: 2000,
+    actual_count: 1200,
+  },
+};
 const base = process.env.PANEL_URL || "http://127.0.0.1:5173";
 const snapshot = "72b97835-0489-467c-8f8a-16864d14d62b";
 const jobId = "8fa7f0a3-842f-4a21-bf06-f6da3cc09517";
@@ -245,6 +257,32 @@ const makeRun = (id, body) => ({
         const run = runs.find((r) => r.id === matched[1]);
         assert(run);
         if (url.pathname.endsWith("/tasks/")) {
+          if (url.searchParams.get("failed_only") === "true") {
+            assert.equal(
+              url.searchParams.get("offset"),
+              "0",
+              "Switching filter resets paging",
+            );
+            return route.fulfill({
+              json: {
+                count: 1,
+                next: null,
+                previous: null,
+                results: [
+                  {
+                    position: 1,
+                    chunk_index: 0,
+                    stage: "sample",
+                    status: "failed",
+                    started_at: day.updated_at,
+                    finished_at: day.updated_at,
+                    result: null,
+                    error: diagnosticError,
+                  },
+                ],
+              },
+            });
+          }
           if (Number(url.searchParams.get("offset")) > 0)
             await new Promise((resolve) => setTimeout(resolve, 300));
           return route.fulfill({
@@ -581,7 +619,7 @@ const makeRun = (id, body) => ({
         {
           chunk_index: 0,
           stage: "sample",
-          error: { code: "stage_timeout" },
+          error: diagnosticError,
           finished_at: day.updated_at,
         },
       ],
@@ -619,6 +657,28 @@ const makeRun = (id, body) => ({
       Math.abs((await page.evaluate(() => window.scrollY)) - scrollBefore) < 5,
       "Task pagination must preserve document scroll",
     );
+    await page
+      .getByLabel("فیلتر کارهای اجرا", { exact: true })
+      .selectOption("errors");
+    const taskError = tasks.locator(".op-error-details");
+    await taskError
+      .locator("summary")
+      .filter({ hasText: diagnosticError.message })
+      .waitFor();
+    await taskError.locator("summary").click();
+    await taskError.getByText("تعداد مورد انتظار", { exact: true }).waitFor();
+    assert((await taskError.textContent()).includes("۲٬۰۰۰"));
+    assert((await taskError.textContent()).includes("۱٬۲۰۰"));
+    assert(
+      (await taskError.textContent()).includes(diagnosticError.diagnostic_id),
+    );
+    await taskError
+      .getByText(diagnosticError.suggestion, { exact: true })
+      .waitFor();
+    if (process.env.TEST_OUTPUT_DIR)
+      await tasks.screenshot({
+        path: process.env.TEST_OUTPUT_DIR + "/operation-error-details.png",
+      });
     await retryButton.evaluate((button) => {
       button.click();
       button.click();
