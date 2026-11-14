@@ -32,6 +32,7 @@ import {
   type Request,
 } from "../api/operations";
 import { OperationProgress } from "../components/operations/OperationProgress";
+import { ExecutionQueue } from "../components/operations/ExecutionQueue";
 import { OperationStep } from "../components/operations/OperationStep";
 import { PipelineLogs } from "../components/operations/PipelineLogs";
 import { dayDetailsPath, isISODate } from "../lib/dayNavigation";
@@ -167,12 +168,13 @@ export function OperationsPage() {
     "ساخت گراف شباهت کسینوسی و ذخیرهٔ مولفه‌های چانک.",
     "انتخاب مشاهدات نماینده از گراف و به‌روزرسانی اطلاعات مولفه‌ها.",
   ];
-  function chooseRun(id: string) {
+  function chooseRun(id: string, date?: string) {
     setTaskOffset(0);
     setEventOffset(0);
     setParams((p) => {
       const q = new URLSearchParams(p);
       q.set("run", id);
+      if (date) q.set("day", date);
       return q;
     });
   }
@@ -281,6 +283,11 @@ export function OperationsPage() {
           اطلاعات سرور
         </span>
       </div>
+      <ExecutionQueue
+        day={dayCode}
+        selectedId={runId}
+        onSelect={(item) => chooseRun(item.id, item.day)}
+      />
       <section
         className={`op-card op-day-card${day.data ? " day-chosen" : ""}`}
         aria-labelledby="processing-day-title"

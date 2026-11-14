@@ -13,7 +13,8 @@
     "test:operations": "node tests/operations.cjs",
     "test:overview": "node tests/overview.cjs",
     "test:inspection": "node tests/inspection.cjs",
-    "test:operation-progress": "node tests/operation-progress.cjs"
+    "test:operation-progress": "node tests/operation-progress.cjs",
+    "test:execution-queue": "node tests/execution-queue.cjs"
   },
   "dependencies": {
     "@fontsource/vazirmatn": "^5.3.0",

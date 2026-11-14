@@ -216,6 +216,21 @@ const makeRun = (id, body) => ({
             results: [],
           },
         });
+      if (url.pathname === "/api/v1/operations/queue/")
+        return route.fulfill({
+          json: {
+            execution_state: "idle",
+            worker: { online: true, busy: false, heartbeat_age_seconds: 1 },
+            active_run: null,
+            unconfirmed_runs: [],
+            queued_total: runs.filter((r) => r.status === "queued").length,
+            count: 0,
+            next: null,
+            previous: null,
+            results: [],
+            observed_at: day.updated_at,
+          },
+        });
       if (url.pathname === "/api/v1/operations/runs/")
         return route.fulfill({
           json: {
