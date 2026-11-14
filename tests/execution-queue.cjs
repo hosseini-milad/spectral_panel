@@ -88,9 +88,10 @@ const reads = [];
     });
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
-    await page.addInitScript(() =>
-      localStorage.setItem("spectral-theme", "dark"),
-    );
+    await page.addInitScript(() => {
+      if (!localStorage.getItem("spectral-theme"))
+        localStorage.setItem("spectral-theme", "dark");
+    });
     await page.route("**/api/v1/**", async (route) => {
       const req = route.request(),
         url = new URL(req.url());
@@ -183,11 +184,13 @@ const reads = [];
       }
       throw Error("Unexpected " + url.pathname);
     });
-    await page.goto(
-      base + "/#/operations?day=" + dateB + "&run=" + waiting[0].id,
-    );
+    await page.goto(base + "/#/jobs?day=" + dateB + "&run=" + waiting[0].id);
     const queue = page.getByRole("region", { name: "صف اجراها", exact: true });
     await queue.getByText("فعال روی سرور", { exact: true }).waitFor();
+    assert.equal(
+      await page.locator(".navigation a.active").first().textContent(),
+      "صف اجراها",
+    );
     assert.equal(
       await queue.locator(".execution-active bdi").textContent(),
       active.id.slice(0, 8),
@@ -200,7 +203,7 @@ const reads = [];
       !page.url().includes(active.id),
       "Viewing a queued item must not imply it is active",
     );
-    await queue.getByLabel("محدودهٔ صف انتظار").selectOption("day");
+    await queue.getByLabel("فیلتر روز اجرا").selectOption(dateB);
     await page.waitForFunction(
       () => document.querySelectorAll(".execution-waiting-row").length === 5,
     );
@@ -211,7 +214,7 @@ const reads = [];
       active.id.slice(0, 8),
       "Another day active must remain visible",
     );
-    await queue.getByLabel("محدودهٔ صف انتظار").selectOption("all");
+    await queue.getByLabel("فیلتر روز اجرا").selectOption("");
     await queue.getByRole("button", { name: "بعدی", exact: true }).click();
     await page.waitForFunction(
       () => document.querySelectorAll(".execution-waiting-row").length === 1,
@@ -227,14 +230,42 @@ const reads = [];
       waiting[5].id,
     );
     assert(page.url().includes("day=" + dateA));
-    assert.equal(
-      await queue.locator(".execution-active bdi").textContent(),
-      active.id.slice(0, 8),
+    assert(page.url().includes("/operations?"));
+    await queue.waitFor({ state: "detached" });
+    assert.equal(await queue.count(), 0, "Operations must not embed the queue");
+    const queueLink = page
+      .locator("main")
+      .getByRole("link", { name: "صف اجراها", exact: true });
+    assert(
+      (await queueLink.getAttribute("href")).includes(waiting[5].id),
+      "Queue shortcut preserves the viewed run",
     );
+    const queueReads = reads.length;
+    await page.waitForTimeout(500);
+    assert.equal(
+      reads.length,
+      queueReads,
+      "Operations does not fetch the queue",
+    );
+    await page.goBack();
+    await queue
+      .getByRole("button", {
+        name: "مشاهده اجرای " + waiting[5].id,
+        exact: true,
+      })
+      .waitFor();
+    assert(page.url().includes("offset=5"), "Back restores the queue page");
     await queue
       .getByRole("button", { name: "مشاهدهٔ اجرای فعال", exact: true })
       .click();
-    await page.waitForFunction((id) => location.hash.includes(id), active.id);
+    await page.waitForFunction(
+      (id) =>
+        location.hash.includes(id) && location.hash.includes("/operations?"),
+      active.id,
+    );
+    assert(page.url().includes("day=" + dateA));
+    await page.goBack();
+    await queue.getByText("فعال روی سرور", { exact: true }).waitFor();
     const before = reads.length;
     await page.waitForTimeout(1800);
     assert.equal(reads.length, before);
@@ -257,6 +288,15 @@ const reads = [];
     if (process.env.TEST_OUTPUT_DIR)
       await queue.screenshot({
         path: process.env.TEST_OUTPUT_DIR + "/execution-queue-mobile.png",
+      });
+    await page.setViewportSize({ width: 1440, height: 1100 });
+    await page.evaluate(() => localStorage.setItem("spectral-theme", "light"));
+    await page.reload();
+    await queue.getByText("فعال روی سرور", { exact: true }).waitFor();
+    if (process.env.TEST_OUTPUT_DIR)
+      await page.screenshot({
+        path: process.env.TEST_OUTPUT_DIR + "/execution-queue-light.png",
+        fullPage: true,
       });
     failQueue = true;
     await queue

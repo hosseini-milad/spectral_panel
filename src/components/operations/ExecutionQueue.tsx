@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   Activity,
   ArrowUpLeft,
@@ -6,6 +6,7 @@ import {
   Clock3,
   ListOrdered,
   RefreshCw,
+  Layers3,
   Server,
   TriangleAlert,
 } from "lucide-react";
@@ -50,13 +51,17 @@ export function ExecutionQueue({
   day,
   selectedId,
   onSelect,
+  offset,
+  onPageChange,
+  filters,
 }: {
   day: string | null;
   selectedId: string | null;
   onSelect: (run: Run) => void;
+  offset: number;
+  onPageChange: (offset: number) => void;
+  filters: ReactNode;
 }) {
-  const [onlyDay, setOnlyDay] = useState(false);
-  const [offset, setOffset] = useState(0);
   const [attempt, setAttempt] = useState(0);
   const [data, setData] = useState<{ url: string; value: Snapshot }>();
   const [error, setError] = useState("");
@@ -64,14 +69,11 @@ export function ExecutionQueue({
   const url = apiPath("operations/queue/", {
     limit: 5,
     offset,
-    day: onlyDay && day ? day : undefined,
+    day: day ?? undefined,
   });
   // Preserve the same queue while paging; keep selection and polling independent.
   const snapshot = data?.value;
   const current = data?.url === url;
-  useEffect(() => {
-    if (onlyDay) setOffset(0);
-  }, [day, onlyDay]);
   useEffect(() => {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
@@ -103,140 +105,234 @@ export function ExecutionQueue({
     snapshot &&
     !error &&
     ["starting", "running", "finalizing"].includes(snapshot.execution_state);
+  const verifiedNow = !!verified;
+  const online = !!snapshot?.worker.online && !error;
+  const cards = [
+    {
+      label: "در انتظار اجرا",
+      value: snapshot ? number(snapshot.queued_total) : "—",
+      hint: "در صف علمی همهٔ روزها",
+      icon: Clock3,
+      tone: "queued",
+    },
+    {
+      label: "اجرای فعال",
+      value:
+        snapshot && !error && snapshot.execution_state !== "unconfirmed"
+          ? number(verifiedNow || snapshot.execution_state === "other" ? 1 : 0)
+          : "—",
+      hint: verifiedNow
+        ? stateText[snapshot!.execution_state]
+        : "براساس مالکیت worker",
+      icon: Activity,
+      tone: "running",
+    },
+    {
+      label: "وضعیت worker",
+      value: !snapshot || error ? "—" : online ? "متصل" : "قطع",
+      hint: "پردازش علمی به‌ترتیب صف",
+      icon: Server,
+      tone: online ? "connected" : "offline",
+    },
+    {
+      label: "وضعیت تأییدنشده",
+      value: snapshot ? number(snapshot.unconfirmed_runs.length) : "—",
+      hint: "اجراهای گزارش‌شده برای بررسی",
+      icon: TriangleAlert,
+      tone: "uncertain",
+    },
+  ];
   return (
-    <section className="op-card execution-queue" aria-label="صف اجراها">
-      <header className="execution-queue-header">
+    <section className="jq-live-queue" aria-label="صف اجراها">
+      <div className="jq-stats">
+        {cards.map(({ label, value, hint, icon: Icon, tone }) => (
+          <div className={`jq-stat ${tone}`} key={label}>
+            <div>
+              <span>{label}</span>
+              <Icon size={19} />
+            </div>
+            <strong>{value}</strong>
+            <small>{hint}</small>
+          </div>
+        ))}
+      </div>
+      <div className="jq-queue-strip">
         <div>
-          <ListOrdered size={19} />
-          <h2>صف اجراها</h2>
-          <span>{number(snapshot?.queued_total ?? 0)} منتظر</span>
+          <i className={`jq-live-dot ${online ? "on" : ""}`} />
+          <strong>صف علمی</strong>
+          <span>
+            {error
+              ? "دریافت وضعیت تازه ممکن نشد"
+              : online
+                ? "worker متصل است"
+                : snapshot
+                  ? "worker پاسخ تازه‌ای ندارد"
+                  : "در حال اتصال…"}
+          </span>
         </div>
-        <button
-          className="days-button"
-          aria-label="بازخوانی صف اجراها"
-          onClick={() => setAttempt((n) => n + 1)}
-          disabled={loading}
-        >
-          <RefreshCw size={14} />
-          بازخوانی
-        </button>
-      </header>
+        <div>
+          <span>به‌روزرسانی هر ۱۰ ثانیه</span>
+          <button
+            className="jq-text-button"
+            aria-label="بازخوانی صف اجراها"
+            disabled={loading}
+            onClick={() => setAttempt((n) => n + 1)}
+          >
+            <RefreshCw size={13} />
+            بازخوانی
+          </button>
+        </div>
+      </div>
       {error && (
-        <p className="op-failure-note" role="alert">
+        <p className="jq-notice warning" role="alert">
           {error}
         </p>
       )}
       {!snapshot && !error && (
-        <p className="execution-queue-empty" role="status">
+        <p className="jq-empty" role="status">
           در حال دریافت وضعیت صف…
         </p>
       )}
       {snapshot && (
         <>
-          <div
-            className={`execution-worker-state ${snapshot.worker.online && !error ? "online" : "offline"}`}
-          >
-            <Server size={14} />
-            <strong>
-              {error
-                ? "دریافت وضعیت تازه ممکن نشد"
-                : snapshot.worker.online
-                  ? "worker متصل است"
-                  : "worker پاسخ تازه‌ای ندارد"}
-            </strong>
-            <span>پایش هر ۱۰ ثانیه</span>
-          </div>
-          <div className={`execution-active ${verified ? "is-running" : ""}`}>
-            <div className="execution-active-heading">
-              <span>
-                <Activity size={16} />
-                {verified
-                  ? stateText[snapshot.execution_state]
-                  : active
-                    ? "اجرای ثبت‌شده، تأییدنشده"
-                    : "اجرای فعال"}
-              </span>
-              {verified && <b>فعال روی سرور</b>}
-            </div>
-            {active ? (
-              <>
-                <div className="execution-active-scope">
-                  <strong>
-                    {dateLabel(active.day)} · {scope(active)}
-                  </strong>
-                  <bdi title={active.id}>{active.id.slice(0, 8)}</bdi>
-                </div>
-                <p>
-                  {active.current_task
-                    ? `چانک ${number(active.current_task.chunk_index)} · ${labels[active.current_task.stage]} · ${phaseLabels[active.current_task.phase ?? ""] ?? "پردازش"} · ${durationLabel(active.current_task.elapsed_seconds)}`
-                    : active.current_stage
-                      ? `چانک ${active.current_chunk === null ? "—" : number(active.current_chunk)} · ${labels[active.current_stage]}`
-                      : stateText[snapshot.execution_state]}
-                </p>
-                <progress
-                  value={
-                    active.progress.processed_percent ?? active.progress.percent
-                  }
-                  max={100}
-                  aria-label="پیشرفت اجرای فعال صف"
-                />
-                <div className="execution-active-footer">
-                  <span>
-                    {number(
-                      active.progress.processed_percent ??
-                        active.progress.percent,
-                    )}
-                    ٪ رسیدگی‌شده
-                    {active.cancel_requested
-                      ? " · توقف پس از چانک جاری درخواست شده"
+          <div className="jq-overview-grid">
+            <section
+              className={`jq-card execution-active ${verifiedNow ? "is-running" : ""}`}
+              aria-label="اجرای فعال سرور"
+            >
+              <div className="jq-card-title">
+                <h2>
+                  <Activity size={17} />
+                  {verifiedNow
+                    ? stateText[snapshot.execution_state]
+                    : active
+                      ? "اجرای ثبت‌شده، تأییدنشده"
+                      : "اجرای فعال"}
+                </h2>
+                {verifiedNow && (
+                  <span className="jq-status running">فعال روی سرور</span>
+                )}
+              </div>
+              {active ? (
+                <>
+                  <div className="execution-active-scope">
+                    <strong>
+                      {dateLabel(active.day)} · {scope(active)}
+                    </strong>
+                    <bdi title={active.id}>{active.id.slice(0, 8)}</bdi>
+                  </div>
+                  <p>
+                    {active.current_task
+                      ? `چانک ${number(active.current_task.chunk_index)} · ${labels[active.current_task.stage]} · ${phaseLabels[active.current_task.phase ?? ""] ?? "پردازش"}`
+                      : active.current_stage
+                        ? `چانک ${active.current_chunk === null ? "—" : number(active.current_chunk)} · ${labels[active.current_stage]}`
+                        : stateText[snapshot.execution_state]}
+                  </p>
+                  <div className="jq-active-progress">
+                    <progress
+                      value={
+                        active.progress.processed_percent ??
+                        active.progress.percent
+                      }
+                      max={100}
+                      aria-label="پیشرفت اجرای فعال صف"
+                    />
+                    <b>
+                      {number(
+                        active.progress.processed_percent ??
+                          active.progress.percent,
+                      )}
+                      ٪
+                    </b>
+                  </div>
+                  <div className="execution-active-footer">
+                    <span>
+                      {active.current_task
+                        ? durationLabel(active.current_task.elapsed_seconds)
+                        : "در انتظار گزارش مرحله"}
+                      {active.cancel_requested
+                        ? " · توقف پس از چانک جاری درخواست شده"
+                        : ""}
+                    </span>
+                    <button
+                      className="jq-text-button"
+                      onClick={() => onSelect(active)}
+                    >
+                      مشاهدهٔ اجرای فعال
+                      <ArrowUpLeft size={14} />
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <p className="jq-active-empty">
+                  {stateText[snapshot.execution_state]}
+                  {snapshot.execution_state === "idle"
+                    ? "؛ فعلاً اجرای فعالی ثبت نشده است."
+                    : snapshot.execution_state === "offline"
+                      ? "؛ اجرای صف به run_api_worker نیاز دارد."
                       : ""}
-                  </span>
-                  <button
-                    className="days-text-button"
-                    onClick={() => onSelect(active)}
-                  >
-                    {selectedId === active.id ? (
-                      <>
-                        <Check size={13} />
-                        در حال مشاهده
-                      </>
-                    ) : (
-                      <>
-                        مشاهدهٔ اجرای فعال
-                        <ArrowUpLeft size={13} />
-                      </>
-                    )}
-                  </button>
+                </p>
+              )}
+              {(snapshot.execution_state === "unconfirmed" || error) && (
+                <p className="jq-inline-warning">
+                  وضعیت این اجرا قطعی نیست؛ آخرین اطلاعات ذخیره‌شده نمایش داده
+                  می‌شود.
+                </p>
+              )}
+            </section>
+            <aside className="jq-card jq-worker-card">
+              <h2>
+                <Server size={17} />
+                وضعیت اجراکننده
+              </h2>
+              <dl>
+                <div>
+                  <dt>ارتباط</dt>
+                  <dd className={online ? "jq-good" : "jq-muted"}>
+                    {error ? "نامشخص" : online ? "برقرار" : "قطع / تأییدنشده"}
+                  </dd>
                 </div>
-              </>
-            ) : (
-              <p>
-                {stateText[snapshot.execution_state]}
-                {snapshot.execution_state === "idle"
-                  ? "؛ فعلاً اجرای فعالی ثبت نشده است."
-                  : snapshot.execution_state === "offline"
-                    ? "؛ اجرای صف به run_api_worker نیاز دارد."
-                    : ""}
-              </p>
-            )}
-            {snapshot.execution_state === "unconfirmed" && (
-              <p className="op-failure-note">
-                مالکیت یا ارتباط worker تأیید نمی‌شود؛ این مورد به‌عنوان اجرای
-                فعال قطعی نشان داده نمی‌شود.
-              </p>
-            )}
+                <div>
+                  <dt>روش اجرا</dt>
+                  <dd>یک اجرای علمی در هر نوبت</dd>
+                </div>
+                <div>
+                  <dt>آخرین ضربان worker</dt>
+                  <dd>
+                    {snapshot.worker.heartbeat_age_seconds === null
+                      ? "گزارش نشده"
+                      : `${durationLabel(snapshot.worker.heartbeat_age_seconds)} پیش`}
+                  </dd>
+                </div>
+                <div>
+                  <dt>آخرین بررسی صف</dt>
+                  <dd>
+                    {new Date(snapshot.observed_at).toLocaleTimeString(
+                      "fa-IR",
+                      {
+                        timeZone: "Asia/Tehran",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        second: "2-digit",
+                      },
+                    )}{" "}
+                    تهران
+                  </dd>
+                </div>
+              </dl>
+            </aside>
           </div>
           {!!snapshot.unconfirmed_runs.length && (
-            <div className="execution-unconfirmed">
-              <TriangleAlert size={15} />
+            <div className="jq-notice warning">
+              <TriangleAlert size={16} />
               <span>
-                برای {number(snapshot.unconfirmed_runs.length)} اجرای ثبت‌شده،
-                مالک فعال تأیید نشده است.
+                مالک فعال برای {number(snapshot.unconfirmed_runs.length)} اجرای
+                ثبت‌شده تأیید نمی‌شود.
               </span>
               {snapshot.unconfirmed_runs.map((run) => (
                 <button
+                  className="jq-text-button"
                   key={run.id}
-                  className="days-text-button"
                   onClick={() => onSelect(run)}
                 >
                   {dateLabel(run.day)} · {scope(run)}
@@ -245,92 +341,128 @@ export function ExecutionQueue({
               ))}
             </div>
           )}
-          <div className="execution-waiting-header">
-            <h3>
-              <Clock3 size={15} />
-              در انتظار اجرا
-            </h3>
-            <label>
-              نمایش
-              <select
-                aria-label="محدودهٔ صف انتظار"
-                value={onlyDay && day ? "day" : "all"}
-                onChange={(e) => {
-                  setOnlyDay(e.target.value === "day");
-                  setOffset(0);
-                }}
-              >
-                <option value="all">همهٔ روزها</option>
-                <option value="day" disabled={!day}>
-                  روز انتخاب‌شده
-                </option>
-              </select>
-            </label>
-          </div>
-          <div
-            className="execution-waiting-list"
-            aria-busy={loading && !current}
-          >
-            {snapshot.results.map((run) => (
-              <button
-                disabled={!current}
-                key={run.id}
-                className={`execution-waiting-row ${selectedId === run.id ? "is-selected" : ""}`}
-                onClick={() => onSelect(run)}
-                aria-label={`مشاهده اجرای ${run.id}`}
-              >
-                <span className="execution-position">
-                  {run.queue_position === null
-                    ? "—"
-                    : number(run.queue_position)}
-                </span>
-                <span>
-                  <strong>{dateLabel(run.day)}</strong>
-                  <small>
-                    {scope(run)} ·{" "}
-                    <bdi title={run.id}>{run.id.slice(0, 8)}</bdi>
-                  </small>
-                </span>
-                <span className="execution-waiting-label">
-                  {run.status === "preparing"
-                    ? "در حال ثبت"
-                    : snapshot.worker.online
-                      ? "در صف انتظار"
-                      : "منتظر worker"}
-                  {selectedId === run.id && <small>در حال مشاهده</small>}
-                </span>
-                <ArrowUpLeft size={14} />
-              </button>
-            ))}
-            {!snapshot.results.length && (
-              <p className="execution-queue-empty">
-                اجرای منتظری در این محدوده نیست.
-              </p>
-            )}
-          </div>
-          <footer className="execution-queue-footer">
-            <span>
-              ترتیب صف علمی سرور · {number(snapshot.count)} مورد
-              {!current ? " · در حال دریافت صفحه…" : ""}
-            </span>
-            <div>
-              <button
-                className="days-button"
-                disabled={!offset || loading}
-                onClick={() => setOffset(Math.max(0, offset - 5))}
-              >
-                قبلی
-              </button>
-              <span>صفحهٔ {number(Math.floor(offset / 5) + 1)}</span>
-              <button
-                className="days-button"
-                disabled={offset + 5 >= snapshot.count || loading}
-                onClick={() => setOffset(offset + 5)}
-              >
-                بعدی
-              </button>
+          <section className="jq-card jq-waiting-card">
+            <div className="jq-card-title">
+              <div>
+                <h2>
+                  <ListOrdered size={17} />
+                  در انتظار اجرا
+                </h2>
+                <p>به‌ترتیب واگذاری به worker علمی</p>
+              </div>
+              <span>{number(snapshot.count)} اجرا در این نما</span>
             </div>
-          </footer>
+            <div className="jq-filters">{filters}</div>
+            <div
+              className="jq-table-scroll"
+              role="region"
+              aria-label="جدول صف انتظار"
+              tabIndex={0}
+              aria-busy={loading && !current}
+            >
+              <table className="jq-table">
+                <thead>
+                  <tr>
+                    <th>جایگاه</th>
+                    <th>شناسهٔ اجرا</th>
+                    <th>روز داده</th>
+                    <th>دامنهٔ چانک‌ها</th>
+                    <th>مراحل</th>
+                    <th>وضعیت</th>
+                    <th>بررسی</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {snapshot.results.map((run) => (
+                    <tr
+                      key={run.id}
+                      className={`execution-waiting-row ${selectedId === run.id ? "is-selected" : ""}`}
+                    >
+                      <td>
+                        <span className="jq-position">
+                          {run.queue_position === null
+                            ? "—"
+                            : number(run.queue_position)}
+                        </span>
+                      </td>
+                      <td>
+                        <bdi className="jq-run-id" title={run.id}>
+                          {run.id.slice(0, 8)}
+                        </bdi>
+                        {selectedId === run.id && (
+                          <small className="jq-selected-label">
+                            <Check size={10} />
+                            انتخاب‌شده
+                          </small>
+                        )}
+                      </td>
+                      <td>
+                        {dateLabel(run.day)}
+                        <small className="jq-cell-note">
+                          <bdi>{run.day}</bdi>
+                        </small>
+                      </td>
+                      <td>
+                        <span className="jq-chunk-range">
+                          <Layers3 size={13} />
+                          {scope(run)}
+                        </span>
+                      </td>
+                      <td>
+                        {run.stages.length === 4
+                          ? "مسیر کامل چانک"
+                          : run.stages.map((s) => labels[s.stage]).join("، ")}
+                      </td>
+                      <td>
+                        <span className="jq-status queued">
+                          <Clock3 size={11} />
+                          {run.status === "preparing"
+                            ? "در حال ثبت"
+                            : online
+                              ? "در صف انتظار"
+                              : "منتظر worker"}
+                        </span>
+                      </td>
+                      <td>
+                        <button
+                          className="jq-row-action"
+                          disabled={!current}
+                          onClick={() => onSelect(run)}
+                          aria-label={`مشاهده اجرای ${run.id}`}
+                        >
+                          جزئیات
+                          <ArrowUpLeft size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {!snapshot.results.length && (
+                <p className="jq-empty">اجرای منتظری در این محدوده نیست.</p>
+              )}
+            </div>
+            <footer className="jq-pagination">
+              <span>
+                {number(snapshot.count)} اجرا · صفحهٔ{" "}
+                {number(Math.floor(offset / 5) + 1)}
+              </span>
+              <div>
+                <button
+                  disabled={!offset || loading}
+                  onClick={() => onPageChange(Math.max(0, offset - 5))}
+                >
+                  قبلی
+                </button>
+                <button
+                  disabled={offset + 5 >= snapshot.count || loading}
+                  onClick={() => onPageChange(offset + 5)}
+                >
+                  بعدی
+                </button>
+              </div>
+            </footer>
+          </section>
         </>
       )}
     </section>

@@ -35,7 +35,7 @@ export const navigation = [
     label: "صف اجراها",
     group: "analysis",
     icon: ListTodo,
-    description: "پیگیری وضعیت اجراها، پارامترها، لاگ‌ها و خطاها.",
+    description: "مشاهدهٔ اجرای فعال، جایگاه صف انتظار و وضعیت worker.",
   },
   {
     path: "/visualizations",

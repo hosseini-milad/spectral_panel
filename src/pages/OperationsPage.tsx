@@ -32,7 +32,6 @@ import {
   type Request,
 } from "../api/operations";
 import { OperationProgress } from "../components/operations/OperationProgress";
-import { ExecutionQueue } from "../components/operations/ExecutionQueue";
 import { OperationStep } from "../components/operations/OperationStep";
 import { PipelineLogs } from "../components/operations/PipelineLogs";
 import { dayDetailsPath, isISODate } from "../lib/dayNavigation";
@@ -278,16 +277,14 @@ export function OperationsPage() {
           <p className="eyebrow">تحلیل و پردازش / مسیر آماده‌سازی داده</p>
           <h1>عملیات و پردازش</h1>
         </div>
-        <span className="op-mock-badge">
-          <Database size={15} />
-          اطلاعات سرور
-        </span>
+        <Link
+          className="days-button"
+          to={`/jobs${dayCode ? `?${new URLSearchParams({ day: dayCode, ...(runId ? { run: runId } : {}) })}` : ""}`}
+        >
+          صف اجراها
+          <ArrowUpLeft size={15} />
+        </Link>
       </div>
-      <ExecutionQueue
-        day={dayCode}
-        selectedId={runId}
-        onSelect={(item) => chooseRun(item.id, item.day)}
-      />
       <section
         className={`op-card op-day-card${day.data ? " day-chosen" : ""}`}
         aria-labelledby="processing-day-title"
